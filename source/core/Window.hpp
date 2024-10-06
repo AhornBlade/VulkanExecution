@@ -8,8 +8,8 @@ namespace vke
 	{
 	public:
 		[[ nodiscard ]] explicit Window() = default;
-		Window(const Window&) = default;
-		Window& operator=(const Window&) = default;
+		Window(Window&&) noexcept = default;
+		Window& operator=(Window&&) noexcept = default;
 		virtual ~Window() noexcept = default;
 
 	protected:
