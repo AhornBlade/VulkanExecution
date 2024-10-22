@@ -5,9 +5,9 @@
 
 namespace vke
 {
-	Instance::Instance(const Features& feature, std::string_view applicationName, uint32_t applicationVersion)
-	{
 #ifdef VULKAN_EXECUTION_DEBUG
+	vk::DebugUtilsMessengerCreateInfoEXT getDebugUtilsMessengerCreateInfo()
+	{
 		vk::DebugUtilsMessengerCreateInfoEXT debugInfo{};
 		debugInfo.setMessageSeverity(vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
 			vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
@@ -35,33 +35,35 @@ namespace vke
 
 				return VK_FALSE;
 			});
+		return debugInfo;
+	}
 #endif // VULKAN_EXECUTION_DEBUG
 
-		{
-			std::vector<const char*> extensionNames;
-			std::vector<const char*> layerNames;
+	Instance::Instance(const Feature& feature, const std::string_view applicationName, uint32_t applicationVersion)
+	{
 #ifdef VULKAN_EXECUTION_DEBUG
-			extensionNames.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-			layerNames.push_back("VK_LAYER_KHRONOS_validation");
+		vk::DebugUtilsMessengerCreateInfoEXT debugInfo = getDebugUtilsMessengerCreateInfo();
 #endif // VULKAN_EXECUTION_DEBUG
 
-			vk::ApplicationInfo appInfo{};
-			appInfo.setApiVersion(context_.enumerateInstanceVersion());
-			appInfo.setEngineVersion(VULKAN_EXECUTION_ENGINE_VERSION);
-			appInfo.setPEngineName(VULKAN_EXECUTION_ENGINE_NAME);
-			appInfo.setApplicationVersion(applicationVersion);
-			appInfo.setPApplicationName(applicationName.data());
+		std::vector<const char*> extensionNames = feature.getRequiredInstanceExtensionNames();
+		std::vector<const char*> layerNames = feature.getRequiredLayerNames();
 
-			vk::InstanceCreateInfo instanceCreateInfo{};
-			instanceCreateInfo.setPApplicationInfo(&appInfo);
-			instanceCreateInfo.setPEnabledExtensionNames(extensionNames);
-			instanceCreateInfo.setPEnabledLayerNames(layerNames);
+		vk::ApplicationInfo appInfo{};
+		appInfo.setApiVersion(context_.enumerateInstanceVersion());
+		appInfo.setEngineVersion(VULKAN_EXECUTION_ENGINE_VERSION);
+		appInfo.setPEngineName(VULKAN_EXECUTION_ENGINE_NAME);
+		appInfo.setApplicationVersion(applicationVersion);
+		appInfo.setPApplicationName(applicationName.data());
+
+		vk::InstanceCreateInfo instanceCreateInfo{};
+		instanceCreateInfo.setPApplicationInfo(&appInfo);
+		instanceCreateInfo.setPEnabledExtensionNames(extensionNames);
+		instanceCreateInfo.setPEnabledLayerNames(layerNames);
 #ifdef VULKAN_EXECUTION_DEBUG
-			instanceCreateInfo.setPNext(&debugInfo);
+		instanceCreateInfo.setPNext(&debugInfo);
 #endif // VULKAN_EXECUTION_DEBUG
 
-			instance_ = vk::raii::Instance{ context_, instanceCreateInfo };
-		}
+		instance_ = vk::raii::Instance{ context_, instanceCreateInfo };
 
 #ifdef VULKAN_EXECUTION_DEBUG
 		debugMessage_ = vk::raii::DebugUtilsMessengerEXT{ instance_, debugInfo };

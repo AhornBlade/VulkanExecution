@@ -9,21 +9,15 @@
 		#undef max
 	#endif
 	#define VK_USE_PLATFORM_WIN32_KHR
+	#define VULKAN_EXECUTION_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 #elif defined(__linux__)
 	#define VK_USE_PLATFORM_XCB_KHR
+	#define VULKAN_EXECUTION_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_XCB_SURFACE_EXTENSION_NAME
 #else
 	#error "Unsupported platform"
 #endif
 
 #include <vulkan/vulkan_raii.hpp>
 
-namespace vke
-{
 # define VULKAN_EXECUTION_ENGINE_NAME "VulkanExecution"
 # define VULKAN_EXECUTION_ENGINE_VERSION (100)
-
-	struct Features
-	{
-	};
-
-}// namespace vke

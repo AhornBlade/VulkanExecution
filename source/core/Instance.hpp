@@ -1,18 +1,18 @@
 #pragma once
 
 #include <string_view>
-#include "utils.hpp"
+#include "Feature.hpp"
 
 namespace vke
 {
-	class Instance final
+	class Instance
 	{
 	public:
 		[[ nodiscard ]] explicit Instance() = default;
-		[[ nodiscard ]] Instance(const Features& feature, std::string_view applicationName = "", uint32_t applicationVersion = 0);
+		[[ nodiscard ]] Instance(const Feature& feature, const std::string_view applicationName = "", uint32_t applicationVersion = 0);
 
-		inline operator const vk::raii::Instance& () const noexcept { return instance_; }
 		[[ nodiscard ]] inline const vk::raii::Instance& get() const noexcept { return instance_; }
+		inline const vk::raii::Instance* operator->() const noexcept { return &instance_; }
 
 	private:
 		vk::raii::Context context_{};
