@@ -6,21 +6,11 @@ namespace vke{
 
     const uint64_t counting_semaphore_init_value_ = 0x0000ffff;
 
-    Semaphore::Semaphore(const vk::raii::Device& device, bool is_counting)
+    CountingSemaphore::CountingSemaphore(const vk::raii::Device& device, uint64_t desired)
     {
-        is_counting_ = is_counting;
-
         vk::SemaphoreTypeCreateInfo typeCreateInfo{};
-        if(is_counting)
-        {
-            typeCreateInfo.setSemaphoreType(vk::SemaphoreType::eTimeline);
-            typeCreateInfo.setInitialValue(counting_semaphore_init_value_);
-        }
-        else
-        {
-            typeCreateInfo.setSemaphoreType(vk::SemaphoreType::eBinary);
-            typeCreateInfo.setInitialValue(0);
-        }
+        typeCreateInfo.setSemaphoreType(vk::SemaphoreType::eTimeline);
+        typeCreateInfo.setInitialValue(counting_semaphore_init_value_ + desired);
 
         vk::SemaphoreCreateInfo createInfo{};
         createInfo.setPNext(&typeCreateInfo);
@@ -28,25 +18,18 @@ namespace vke{
         semaphore_ = device.createSemaphore(createInfo);
     }
 
-    void Semaphore::release(uint64_t update)
+    void CountingSemaphore::release(uint64_t update)
     {
         vk::SemaphoreSignalInfo signalInfo{};
 
         signalInfo.setSemaphore(semaphore_);
-        if(is_counting_)
-        {
-            signalInfo.setValue(semaphore_.getCounterValue() + update);
-        }
-        else
-        {
-            signalInfo.setValue(1);
-        }
+        signalInfo.setValue(semaphore_.getCounterValue() + update);
         
         semaphore_.getDispatcher()->vkSignalSemaphore(semaphore_.getDevice(), 
             reinterpret_cast<VkSemaphoreSignalInfo*>(&signalInfo));
     }
 
-    void Semaphore::acquire()
+    time_status CountingSemaphore::acquire(uint64_t rel_time)
     {
         vk::SemaphoreSignalInfo signalInfo{};
 
@@ -58,18 +41,43 @@ namespace vke{
 
         vk::SemaphoreWaitInfo waitInfo{};
 
-        uint64_t value = is_counting_ ? counting_semaphore_init_value_ : 1;
-
         waitInfo.setSemaphores(*semaphore_);
-        waitInfo.setValues(value);
+        waitInfo.setValues(counting_semaphore_init_value_);
 
         vk::Result r = static_cast<vk::Result>(semaphore_.getDispatcher()->vkWaitSemaphores(semaphore_.getDevice(), 
-            reinterpret_cast<VkSemaphoreWaitInfo*>(&waitInfo), UINT64_MAX));
+            reinterpret_cast<VkSemaphoreWaitInfo*>(&waitInfo), rel_time));
 
         if(r == vk::Result::eTimeout)
         {
-            std::cout << "Semaphore wait time out\n";
+            signalInfo.setValue(semaphore_.getCounterValue() + 1);
+            
+            semaphore_.getDispatcher()->vkSignalSemaphore(semaphore_.getDevice(), 
+                reinterpret_cast<VkSemaphoreSignalInfo*>(&signalInfo));
+
+            return time_status::timeout;
         }
+        else
+        {
+            return time_status::no_timeout;
+        }
+    }
+
+    BinarySemaphore::BinarySemaphore(const vk::raii::Device& device)
+    {
+        vk::SemaphoreCreateInfo createInfo{};
+
+        semaphore_ = device.createSemaphore(createInfo);
+    }
+
+    time_status BinarySemaphore::acquire(uint64_t rel_time) const
+    {
+        vk::SemaphoreWaitInfo waitInfo{};
+
+        waitInfo.setSemaphores(*semaphore_);
+
+        return static_cast<vk::Result>(semaphore_.getDispatcher()->vkWaitSemaphores(semaphore_.getDevice(), 
+            reinterpret_cast<VkSemaphoreWaitInfo*>(&waitInfo), rel_time)) == vk::Result::eTimeout ? 
+            time_status::timeout : time_status::no_timeout;
     }
 
     ConditionVariable::ConditionVariable(const vk::raii::Device& device)
@@ -107,10 +115,15 @@ namespace vke{
 
     void ConditionVariable::wait( std::unique_lock<std::mutex>& lock )
     {
-        wait_for(lock, UINT64_MAX);
+        time_status ts = wait_for(lock, UINT64_MAX);
+
+        if(ts == time_status::timeout)
+        {
+            std::cout << "Condition variable time out\n";
+        }
     }
 
-    std::cv_status ConditionVariable::wait_for( std::unique_lock<std::mutex>& lock, uint64_t rel_time )
+    time_status ConditionVariable::wait_for( std::unique_lock<std::mutex>& lock, uint64_t rel_time )
     {
         vk::SemaphoreWaitInfo waitInfo{};
 
@@ -126,7 +139,7 @@ namespace vke{
 
         lock.lock();
 
-        return r == vk::Result::eTimeout ? std::cv_status::timeout : std::cv_status::no_timeout;
+        return r == vk::Result::eTimeout ? time_status::timeout : time_status::no_timeout;
     }
 
 } // namespace vke
