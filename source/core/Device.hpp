@@ -18,7 +18,8 @@ namespace vke
 			std::span<const DeviceQueueRequirement> queueRequirement, 
 			const std::function<uint32_t(const vk::PhysicalDeviceProperties&)>& scoreFunc = nullptr);
 
-		[[ nodiscard ]] inline const vk::raii::Device& get() const noexcept { return device_; }
+		[[ nodiscard ]] inline vk::Device get() const noexcept { return device_; }
+		[[ nodiscard ]] inline operator const vk::raii::Device&() const noexcept { return device_; }
 		inline const vk::raii::Device* operator->() const noexcept { return &device_; }
 
 	private:

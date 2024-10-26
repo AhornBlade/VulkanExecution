@@ -11,7 +11,8 @@ namespace vke
 		[[ nodiscard ]] explicit Instance() = default;
 		[[ nodiscard ]] Instance(const Feature& feature, const std::string_view applicationName = "", uint32_t applicationVersion = 0);
 
-		[[ nodiscard ]] inline const vk::raii::Instance& get() const noexcept { return instance_; }
+		[[ nodiscard ]] inline vk::Instance get() const noexcept { return instance_; }
+		[[ nodiscard ]] inline operator const vk::raii::Instance&() const noexcept { return instance_; }
 		inline const vk::raii::Instance* operator->() const noexcept { return &instance_; }
 
 	private:

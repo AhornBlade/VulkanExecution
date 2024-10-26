@@ -8,7 +8,7 @@ int main()
 	feature.bUseWindow = true;
 
 	vke::Instance instance{ feature, "test_core", 100 };
-	vke::GLFWWindow window{ instance.get(), 800, 600, "test_core"};
+	vke::GLFWWindow window{ instance, 800, 600, "test_core"};
 	
 	std::vector<vke::DeviceQueueRequirement> queueRequirements
 	{
@@ -17,5 +17,5 @@ int main()
 		{vk::QueueFlagBits::eTransfer, {1.0f}},
 	};
 
-	vke::Device device{instance.get(), feature, queueRequirements};
+	vke::Device device{instance, feature, queueRequirements};
 }
