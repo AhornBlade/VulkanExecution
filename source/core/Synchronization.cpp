@@ -42,7 +42,8 @@ namespace vke{
             signalInfo.setValue(1);
         }
         
-        semaphore_.getDevice().signalSemaphore(signalInfo);
+        semaphore_.getDispatcher()->vkSignalSemaphore(semaphore_.getDevice(), 
+            reinterpret_cast<VkSemaphoreSignalInfo*>(&signalInfo));
     }
 
     void Semaphore::acquire()
@@ -52,7 +53,8 @@ namespace vke{
         signalInfo.setSemaphore(semaphore_);
         signalInfo.setValue(semaphore_.getCounterValue() - 1);
         
-        semaphore_.getDevice().signalSemaphore(signalInfo);
+        semaphore_.getDispatcher()->vkSignalSemaphore(semaphore_.getDevice(), 
+            reinterpret_cast<VkSemaphoreSignalInfo*>(&signalInfo));
 
         vk::SemaphoreWaitInfo waitInfo{};
 
@@ -61,7 +63,10 @@ namespace vke{
         waitInfo.setSemaphores(*semaphore_);
         waitInfo.setValues(value);
 
-        if(semaphore_.getDevice().waitSemaphores(waitInfo, UINT64_MAX) == vk::Result::eTimeout)
+        vk::Result r = static_cast<vk::Result>(semaphore_.getDispatcher()->vkWaitSemaphores(semaphore_.getDevice(), 
+            reinterpret_cast<VkSemaphoreWaitInfo*>(&waitInfo), UINT64_MAX));
+
+        if(r == vk::Result::eTimeout)
         {
             std::cout << "Semaphore wait time out\n";
         }
@@ -86,7 +91,8 @@ namespace vke{
         signalInfo.setSemaphore(semaphore_);
         signalInfo.setValue(count);
         
-        semaphore_.getDevice().signalSemaphore(signalInfo);
+        semaphore_.getDispatcher()->vkSignalSemaphore(semaphore_.getDevice(), 
+            reinterpret_cast<VkSemaphoreSignalInfo*>(&signalInfo));
     }
 
     void ConditionVariable::notify_one() noexcept
@@ -115,7 +121,8 @@ namespace vke{
 
         lock.unlock();
 
-        vk::Result r = semaphore_.getDevice().waitSemaphores(waitInfo, rel_time);
+        vk::Result r = static_cast<vk::Result>(semaphore_.getDispatcher()->vkWaitSemaphores(semaphore_.getDevice(), 
+            reinterpret_cast<VkSemaphoreWaitInfo*>(&waitInfo), rel_time));
 
         lock.lock();
 

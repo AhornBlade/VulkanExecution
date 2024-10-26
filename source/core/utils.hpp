@@ -1,13 +1,7 @@
 #pragma once
 
 #if defined(_WIN32)
-	#include <windows.h>
-	#ifdef min
-		#undef min
-	#endif
-	#ifdef max
-		#undef max
-	#endif
+	#define NOMINMAX
 	#define VK_USE_PLATFORM_WIN32_KHR
 	#define VULKAN_EXECUTION_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 #elif defined(__linux__)
