@@ -22,6 +22,8 @@ namespace vke
 		[[ nodiscard ]] inline operator const vk::raii::Device&() const noexcept { return device_; }
 		inline const vk::raii::Device* operator->() const noexcept { return &device_; }
 
+		inline QueueScheduler getQueueScheduler(uint32_t index) const { return QueueScheduler{queueContexts_[index]}; }
+
 	private:
 		vk::raii::PhysicalDevice physicalDevice_{ VK_NULL_HANDLE };
 		vk::raii::Device device_{ VK_NULL_HANDLE };

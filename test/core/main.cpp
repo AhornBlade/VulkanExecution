@@ -18,4 +18,6 @@ int main()
 	};
 
 	vke::Device device{instance, feature, queueRequirements};
+
+	vke::QueueScheduler computeScheduler = device.getQueueScheduler(1);
 }

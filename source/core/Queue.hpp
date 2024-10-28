@@ -5,6 +5,7 @@
 
 #include <mutex>
 #include <span>
+#include <functional>
 
 namespace vke{
 
@@ -41,7 +42,22 @@ namespace vke{
 	};
 
 	template<typename T>
-	concept queue_submittable = requires(T t, const vk::raii::Queue& q ){ t.submit_to(q); };
+	concept queue_submittable = requires(T t, const Queue& q ){ t.submit_to(q); } &&
+		std::move_constructible<std::remove_cvref_t<T>> &&
+		std::constructible_from<std::remove_cvref_t<T>, T>;
+
+	class QueueTask
+	{
+	public:
+		template<queue_submittable T>
+		QueueTask(T&& task)
+			: func_{[t = static_cast<std::remove_cvref_t<T>>(task)](const Queue& q){ t.submit_to(q); }} {}
+
+		inline void submit_to(const Queue& q) const { func_(q); }
+
+	private:
+		std::move_only_function<void(const Queue&) const> func_;
+	};
 
 	class QueueContext
 	{
@@ -51,18 +67,24 @@ namespace vke{
 		QueueContext(QueueContext&& other) noexcept : queues_(std::move(other.queues_)) {}
 		QueueContext& operator=(QueueContext&& other) { std::swap(queues_, other.queues_); return *this; }
 
-		void submit_to(queue_submittable auto&& task)
-		{
-			task.submit_to(selectIdleQueue());
-		}
+		void submit(QueueTask&& task) const;
 
 	private:
 		std::vector<Queue> queues_;
 		mutable std::mutex mutex_;
 		mutable ConditionVariable cv_;
-
-		[[ nodiscard ]] const Queue& selectIdleQueue() const noexcept;
 	};
 
+	class QueueScheduler
+	{
+	public:
+		[[ nodiscard ]] explicit QueueScheduler(const QueueContext& context) : context_{ &context } {}
+		[[ nodiscard ]] QueueScheduler(QueueContext&& context) = delete;
+		
+		inline void submit(QueueTask&& task) const { context_->submit(std::move(task)); }
+
+	private:
+		const QueueContext* context_;
+	};
 
 } // namespace vke

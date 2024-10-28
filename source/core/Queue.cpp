@@ -55,7 +55,7 @@ namespace vke{
         }
     }
 
-    const Queue& QueueContext::selectIdleQueue() const noexcept
+    void QueueContext::submit(QueueTask&& task) const
     {
         std::unique_lock lock{mutex_};
 
@@ -63,7 +63,7 @@ namespace vke{
 
         cv_.wait(lock, [&]{ return std::ranges::any_of(queues_, check_func); });
         
-        return *std::ranges::find_if(queues_, check_func);
+        task.submit_to(*std::ranges::find_if(queues_, check_func));
     }
 
 } // namespace vke
