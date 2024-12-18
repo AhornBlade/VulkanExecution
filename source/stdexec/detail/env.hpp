@@ -3,8 +3,34 @@
 #include "concepts.hpp"
 #include "stop_token.hpp"
 
+#include <tuple>
+
 namespace vke::exec
-{
+{  
+    namespace _rcvrs 
+    {
+        struct set_value_t;
+        struct set_error_t;
+        struct set_stopped_t;
+    } // namespace _rcvrs
+
+    using _rcvrs::set_value_t;
+    using _rcvrs::set_error_t;
+    using _rcvrs::set_stopped_t;
+    extern const set_value_t set_value;
+    extern const set_error_t set_error;
+    extern const set_stopped_t set_stopped;
+
+    template <class _Tag>
+    concept completion_tag = one_of<_Tag, set_value_t, set_error_t, set_stopped_t>;
+
+    enum class forward_progress_guarantee 
+    {
+        concurrent,
+        parallel,
+        weakly_parallel
+    };
+
     namespace _queries
     {
         template<class Query, class QueryType>
@@ -43,7 +69,7 @@ namespace vke::exec
                 return true;
             }
 
-            static auto operator()(const auto& _env) noexcept
+            static decltype(auto) operator()(const auto& _env) noexcept
                 requires nothrow_queryable_of<decltype(_env), Tag>
             {
                 return _env.query(Tag{});
@@ -59,7 +85,7 @@ namespace vke::exec
                 return true;
             }
 
-            static stoppable_token auto operator()(const auto& _env) noexcept
+            static stoppable_token decltype(auto) operator()(const auto& _env) noexcept
             {
                 if constexpr(queryable_of<decltype(_env), Tag>)
                 {
@@ -78,7 +104,7 @@ namespace vke::exec
         {
             using Tag = get_domain_t;
 
-            static constexpr auto operator()(const auto& _env) noexcept
+            static constexpr decltype(auto) operator()(const auto& _env) noexcept
                 requires nothrow_queryable_of<decltype(_env), Tag>
             {
                 return _env.query(Tag{});
@@ -94,7 +120,7 @@ namespace vke::exec
         {
             using Tag = get_scheduler_t;
 
-            static auto operator()(const auto& _env) noexcept
+            static decltype(auto) operator()(const auto& _env) noexcept
                 requires nothrow_queryable_of<decltype(_env), Tag>
             {
                 return _env.query(Tag{});
@@ -110,10 +136,47 @@ namespace vke::exec
         {
             using Tag = get_delegation_scheduler_t;
 
-            static auto operator()(const auto& _env) noexcept
+            static decltype(auto) operator()(const auto& _env) noexcept
                 requires nothrow_queryable_of<decltype(_env), Tag>
             {
                 return _env.query(Tag{});
+            }
+
+            static constexpr auto query(forwarding_query_t) noexcept -> bool 
+            {
+                return true;
+            }
+        };
+
+        struct get_forward_progress_guarantee_t
+        {
+            using Tag = get_forward_progress_guarantee_t;
+
+            static constexpr auto operator()(auto&& _t) 
+                noexcept(nothrow_queryable_of<decltype(_t), Tag>)
+                -> forward_progress_guarantee
+                requires queryable_of<decltype(_t), Tag>
+            {
+                static_assert(std::convertible_to<queryable_result_of_t<decltype(_t), Tag>, forward_progress_guarantee>,
+                    "Customizations of get_forward_progress_guarantee must return forward_progress_guarantee.");
+                return _t.query(Tag{});
+            }
+
+            static constexpr auto operator()(auto&&) noexcept -> forward_progress_guarantee
+            {
+                return forward_progress_guarantee::weakly_parallel;
+            } 
+        };
+
+        template<completion_tag T>
+        struct get_completion_scheduler_t 
+        {
+            using Tag = get_completion_scheduler_t;
+
+            static decltype(auto) operator()(const auto& q) noexcept
+                requires nothrow_queryable_of<decltype(q), Tag>
+            {
+                return q.query(Tag{});
             }
 
             static constexpr auto query(forwarding_query_t) noexcept -> bool 
@@ -130,6 +193,8 @@ namespace vke::exec
     using _queries::get_domain_t;
     using _queries::get_scheduler_t;
     using _queries::get_delegation_scheduler_t;
+    using _queries::get_forward_progress_guarantee_t;
+    using _queries::get_completion_scheduler_t;
 
     inline constexpr forwarding_query_t forwarding_query{};
     inline constexpr get_allocator_t get_allocator{};
@@ -137,14 +202,33 @@ namespace vke::exec
     inline constexpr get_domain_t get_domain{};
     inline constexpr get_scheduler_t get_scheduler{};
     inline constexpr get_delegation_scheduler_t get_delegation_scheduler{};
+    inline constexpr get_forward_progress_guarantee_t get_forward_progress_guarantee{};
+    template<completion_tag T>
+    inline constexpr get_completion_scheduler_t<T> get_completion_scheduler{};
+
+    namespace _env
+    {
+        template<class ... Envs>
+        struct env
+        {
+            std::tuple<Envs...> _envs;
+        };
+
+        template<>
+        struct env<> {};
+
+        using empty_env = env<>;
+
+    } // namespace _env
+
+    using _env::env;
+    using _env::empty_env;
 
     namespace _get_env
     {
-        struct empty_env{};
-
         struct get_env_t
         {
-            static queryable auto operator()(const auto& env_provider) noexcept
+            static queryable decltype(auto) operator()(const auto& env_provider) noexcept
             {
                 if constexpr(requires{ env_provider.get_env(); })
                 {
@@ -161,7 +245,6 @@ namespace vke::exec
 
     } // namespace _get_env
 
-    using _get_env::empty_env;
     using _get_env::get_env_t;
 
     inline constexpr get_env_t get_env{};
