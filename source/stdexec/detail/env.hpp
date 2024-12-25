@@ -249,4 +249,7 @@ namespace vke::exec
 
     inline constexpr get_env_t get_env{};
 
+    template <class EnvProvider>
+    using env_of_t = std::invoke_result_t<get_env_t, EnvProvider>;
+
 }// namespace vke::exec

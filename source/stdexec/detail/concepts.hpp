@@ -1,6 +1,5 @@
 #pragma once
 
-#include <type_traits>
 #include <concepts>
 
 namespace vke::exec
@@ -43,5 +42,11 @@ namespace vke::exec
 
     template<class ... TypeLists>
     using mconcat = _mconcat::mconcat_impl<TypeLists...>::Type;
+
+    template<class ... Ts>
+    struct typelist {};
+
+    template<template<class...> class T, class... Args>
+    concept valid_specialization = requires { typename T<Args...>; };
 
 } // namespace vke::exec
