@@ -32,9 +32,9 @@ namespace vke::exec
         queryable<Sch> &&
         requires(Sch&& sch) {
             { schedule(std::forward<Sch>(sch)) } -> sender;
-            { auto(get_completion_scheduler<set_value_t>(
-                get_env(schedule(std::forward<Sch>(sch))))) }
-                -> std::same_as<std::remove_cvref_t<Sch>>;
+            { get_completion_scheduler<set_value_t>(
+                get_env(schedule(std::forward<Sch>(sch)))) }
+                -> decays_to<std::remove_cvref_t<Sch>>;
         } &&
         std::equality_comparable<std::remove_cvref_t<Sch>> &&
         std::copy_constructible<std::remove_cvref_t<Sch>>;

@@ -98,7 +98,12 @@ namespace vke::exec
 
     } // namespace _signatures
 
-    struct transform_sender_t;
+    namespace _domain
+    {
+        struct transform_sender_t;
+    }
+
+    using _domain::transform_sender_t;
     
     extern const transform_sender_t transform_sender;
 

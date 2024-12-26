@@ -11,4 +11,6 @@ namespace vke::exec
     template<class Sndr, class Env>
     using await_result_type = int; // to do
 
+    auto connect_awaitable(auto&& sndr, auto&& rcvr);
+
 } // namespace vke::exec

@@ -2,6 +2,7 @@
 
 #include "receiver.hpp"
 #include "operation_state.hpp"
+#include "sender.hpp"
 
 namespace vke::exec
 {
@@ -179,6 +180,8 @@ namespace vke::exec
             using sender_concept = sender_t;
             using indices_for = std::index_sequence_for<Child...>;
 
+            using std::tuple<Tag, Data, Child...>::tuple;
+
             decltype(auto) get_env() const noexcept {
                 return std::apply([](auto, auto& data, auto& ... child)
                 {
@@ -203,6 +206,5 @@ namespace vke::exec
         };
 
     }// namespace _basic
-
 
 }// namespace vke::exec
