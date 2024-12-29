@@ -18,7 +18,7 @@ namespace vke::exec
                     "set_error can only accept 1 argument");
                 static_assert(!(std::same_as<CPO, set_stopped_t> && sizeof...(args) != 0), 
                     "set_stopped cannot accept any arguments");
-                return _basic::basic_sender{Tag{}, std::tuple{std::forward<Args>(args)...} };
+                return _basic::basic_sender{Tag{}, base_tuple{std::forward<Args>(args)...} };
             }
         };
         
@@ -38,9 +38,9 @@ namespace vke::exec
         struct impls_for<_just::just_tag_t<CPO>> : default_impls {
             static constexpr auto start =
             [](auto& state, auto& rcvr) noexcept -> void {
-                std::apply([&](auto& ... args){
+                state.apply([&](auto& ... args){
                     CPO{}(std::move(rcvr), std::move(args)...);
-                }, state);
+                });
             };
         };
     }

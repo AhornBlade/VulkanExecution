@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <tuple>
 
 namespace vke::exec
 {
@@ -48,5 +49,24 @@ namespace vke::exec
 
     template<template<class...> class T, class... Args>
     concept valid_specialization = requires { typename T<Args...>; };
+
+    template<class ... Ts>
+    struct base_tuple
+    {
+        template<class ... Args>
+        base_tuple(Args&& ... args) : _tuple{ std::tuple{std::forward<Args>(args)...} } {}
+
+        template<class Self, class Func>
+        constexpr decltype(auto) apply(this Self&& self, Func&& func) 
+            noexcept(noexcept(std::apply(func, std::forward<Self>(self)._tuple)))
+        {
+            return std::apply(func, std::forward<Self>(self)._tuple);
+        }
+
+        std::tuple<Ts...> _tuple;
+    };
+
+    template<class ... Args>
+    base_tuple(Args&& ... args) -> base_tuple<std::remove_cvref_t<Args>...>;
 
 } // namespace vke::exec

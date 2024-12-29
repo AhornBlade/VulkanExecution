@@ -31,7 +31,7 @@ namespace vke::exec
                 };
             static constexpr auto get_state = 
                 []<class Sndr, class Rcvr>(Sndr&& sndr, Rcvr& rcvr) noexcept -> decltype(auto) {
-                    return std::apply(get_data{}, std::forward<Sndr>(sndr));
+                    return std::forward<Sndr>(sndr).apply(get_data{});
                 };
             static constexpr auto start = 
                 [](auto&, auto&, auto&... ops) noexcept -> void {
@@ -59,11 +59,11 @@ namespace vke::exec
         };
 
         template<class Sndr>
-        using sender_traits = decltype(std::apply(
+        using sender_traits = decltype(Sndr{}.apply(
             []<class Tag, class Data, class... Child>(Tag, Data, Child...) -> decltype(auto)
             {
                 return sender_traits_helper<Tag, Data, Child...>{};
-            }, Sndr{}));
+            }));
 
         template<class Sndr>
         using tag_of_t = sender_traits<Sndr>::tag;
@@ -131,13 +131,13 @@ namespace vke::exec
             basic_state<Sndr, Rcvr>* op, Sndr&& sndr, std::index_sequence<Is...>)
                 -> decltype(auto) 
             {
-                return std::apply(
+                return std::forward<Sndr>(sndr).apply(
                 [&]<class ... Child>(auto&, auto& data, Child& ... child)
                 {
-                    return std::tuple{connect(
+                    return base_tuple{connect(
                         std::forward<Child>(child),
                         basic_receiver<Sndr, Rcvr, std::integral_constant<size_t, Is>>{op})...};
-                }, std::forward<Sndr>(sndr));
+                });
             };
 
         template<class Sndr>
@@ -165,28 +165,29 @@ namespace vke::exec
 
             void start() & noexcept 
             {
-                std::apply([&](auto& ... ops)
+                inner_ops.apply([&](auto& ... ops)
                 {
                     impls_for<tag_t>::start(this->state, this->rcvr, ops...);
-                }, inner_ops);
+                });
             }
         };
 
         struct sender_t;
 
         template<class Tag, class Data, class... Child>
-        struct basic_sender : std::tuple<Tag, Data, Child...> 
+        struct basic_sender : base_tuple<Tag, Data, Child...> 
         {
             using sender_concept = sender_t;
             using indices_for = std::index_sequence_for<Child...>;
 
-            using std::tuple<Tag, Data, Child...>::tuple;
+            basic_sender(Tag tag, Data&& data, Child&& ... child)
+                : base_tuple<Tag, Data, Child...>{ tag, std::forward<Data>(data), std::forward<Child>(child)... } {}
 
             decltype(auto) get_env() const noexcept {
-                return std::apply([](auto, auto& data, auto& ... child)
+                return this->apply([](auto, auto& data, auto& ... child)
                 {
                     return impls_for<Tag>::get_attrs(data, child...);
-                }, *this);
+                });
             }
 
             template<decays_to<basic_sender> Self, receiver Rcvr>

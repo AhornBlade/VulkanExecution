@@ -209,9 +209,9 @@ namespace vke::exec
     namespace _env
     {
         template<class ... Envs>
-        struct env
+        struct env : base_tuple<Envs...>
         {
-            std::tuple<Envs...> _envs;
+            using base_tuple<Envs...>::base_tuple;
         };
 
         template<>
