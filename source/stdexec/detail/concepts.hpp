@@ -54,7 +54,7 @@ namespace vke::exec
     struct base_tuple
     {
         template<class ... Args>
-        base_tuple(Args&& ... args) : _tuple{ std::tuple{std::forward<Args>(args)...} } {}
+        base_tuple(Args&& ... args) : _tuple{ std::forward<Args>(args)... } {}
 
         template<class Self, class Func>
         constexpr decltype(auto) apply(this Self&& self, Func&& func) 
@@ -67,6 +67,9 @@ namespace vke::exec
     };
 
     template<class ... Args>
-    base_tuple(Args&& ... args) -> base_tuple<std::remove_cvref_t<Args>...>;
+    base_tuple(Args&& ... args) -> base_tuple<Args...>;
+
+    template<class ... Ts>
+    using decayed_tuple = base_tuple<std::decay_t<Ts>...>;
 
 } // namespace vke::exec

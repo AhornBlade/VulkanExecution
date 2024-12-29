@@ -175,13 +175,15 @@ namespace vke::exec
         struct sender_t;
 
         template<class Tag, class Data, class... Child>
-        struct basic_sender : base_tuple<Tag, Data, Child...> 
+        struct basic_sender : decayed_tuple<Tag, Data, Child...> 
         {
             using sender_concept = sender_t;
             using indices_for = std::index_sequence_for<Child...>;
 
-            basic_sender(Tag tag, Data&& data, Child&& ... child)
-                : base_tuple<Tag, Data, Child...>{ tag, std::forward<Data>(data), std::forward<Child>(child)... } {}
+            template<class _Tag, class _Data, class ... _Child>
+            basic_sender(_Tag tag, _Data&& data, _Child&& ... child)
+                : decayed_tuple<Tag, Data, Child...>
+                { tag, std::forward<_Data>(data), std::forward<_Child>(child)... } {}
 
             decltype(auto) get_env() const noexcept {
                 return this->apply([](auto, auto& data, auto& ... child)
@@ -206,6 +208,34 @@ namespace vke::exec
             }
         };
 
+        template<class _Tag, class _Data, class ... _Child>
+        basic_sender(_Tag tag, _Data&& data, _Child&& ... child) -> basic_sender<_Tag, _Data, _Child...>;
+
     }// namespace _basic
+
+    template<class Tag, class ... Ts>
+    struct sender_adaptor_closure : base_tuple<Ts...>
+    {
+        template<class _Tag, class ... _Ts>
+        sender_adaptor_closure(_Tag, _Ts&& ... args) 
+            : base_tuple<Ts...>{std::forward<_Ts>(args)...} {}
+
+        template<typename S, template<typename...> typename Fn>
+            using tuple_apply = Fn<Tag, S, Ts...>;
+
+        template<sender Sndr, decays_to<sender_adaptor_closure> Self>
+        friend sender decltype(auto) operator|(Sndr&& sndr, Self&& self)
+            noexcept(tuple_apply<Sndr, std::is_nothrow_invocable>::value)
+            requires tuple_apply<Sndr, std::is_invocable>::value
+        {
+            return std::forward<Self>(self).apply([&sndr]<class ... Args>(Args&& ... args)
+            {
+                return Tag{}(std::forward<Sndr>(sndr), std::forward<Args>(args)...);
+            });
+        }
+    };
+
+    template<class _Tag, class ... _Ts>
+    sender_adaptor_closure(_Tag, _Ts&& ... args) -> sender_adaptor_closure<_Tag, _Ts...>;
 
 }// namespace vke::exec

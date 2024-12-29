@@ -209,9 +209,9 @@ namespace vke::exec
     namespace _env
     {
         template<class ... Envs>
-        struct env : base_tuple<Envs...>
+        struct env : decayed_tuple<Envs...>
         {
-            using base_tuple<Envs...>::base_tuple;
+            using decayed_tuple<Envs...>::decayed_tuple;
         };
 
         template<>
