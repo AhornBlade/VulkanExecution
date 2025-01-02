@@ -23,26 +23,38 @@ namespace vke::exec
     template <class _Ty, class... _As>
     concept one_of = (std::same_as<_Ty, _As> || ...);
 
-    namespace _mconcat
+    namespace _munique
     {
-        template<class ... TypeLists>
-        struct mconcat_impl;
+        template<class TypeList1, class TypeList2>
+        struct munique_remove_void_impl;
 
-        template<template<class ...> typename ListType, class ... Ts, class ... Us>
-        struct mconcat_impl<ListType<Ts...>, ListType<Us...>>
+        template<template<class ...>typename ListType, class ... Ts>
+        struct munique_remove_void_impl<ListType<Ts...>, ListType<>>
         {
-            using Type = ListType<Ts..., Us...>;
+            using Type = ListType<Ts...>;
         };
 
-        template<template<class ...> typename ListType, class ... Ts, class ... Us, class ... TypeLists>
-        struct mconcat_impl<ListType<Ts...>, ListType<Us...>, TypeLists...>
+        template<template<class ...>typename ListType, class ... Ts, class U, class ... Us>
+        struct munique_remove_void_impl<ListType<Ts...>, ListType<U, Us...>>
         {
-            using Type = mconcat_impl<ListType<Ts..., Us...>, TypeLists...>::Type;
+            using Type = munique_remove_void_impl< std::conditional_t<
+                one_of<U, Ts...> || std::is_void_v<U>, 
+                ListType<Ts...>, 
+                ListType<Ts..., U>>, ListType<Us...>>::Type;
         };
-    } // namespace _mconcat
 
-    template<class ... TypeLists>
-    using mconcat = _mconcat::mconcat_impl<TypeLists...>::Type;
+        template<class TypeList>
+        struct munique_remove_void_helper;
+
+        template<template<class ...>typename ListType, class ... Ts>
+        struct munique_remove_void_helper<ListType<Ts...>>
+        {
+            using Type = munique_remove_void_impl<ListType<>, ListType<Ts...>>::Type;
+        };
+    }; // namespace _munique
+
+    template<class TypeList>
+    using _munique_remove_void = _munique::munique_remove_void_helper<TypeList>::Type;
 
     template<class ... Ts>
     struct typelist {};

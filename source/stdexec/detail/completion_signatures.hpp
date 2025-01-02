@@ -58,45 +58,61 @@ namespace vke::exec
 
     namespace _signatures
     {
-        template<template<class ...> typename SetValue, template<class> typename, class, class ... Values>
-        auto transform_sig_helper(set_value_t(Values...)) -> SetValue<Values...>;
+        struct DefaultSetFunc
+        {
+            template<class ... Args>
+            using DefaultSetValue = set_value_t(Args...);
 
-        template<template<class ...> typename, template<class> typename SetError, class, class Error>
-        auto transform_sig_helper(set_error_t(Error)) -> SetError<Error>;
-        
-        template<template<class ...> typename, template<class> typename, class SetStopped>
-        auto transform_sig_helper(set_stopped_t()) -> SetStopped;
+            template<class Error>
+            using DefaultSetError = set_error_t(Error);
 
-        template<
-            class Sig,
-            template<class ...> typename SetValue, 
-            template<class> typename SetError, 
-            class SetStopped>
-        using transform_sig_t = decltype(transform_sig_helper<SetValue, SetError, SetStopped>(Sig{}));
+            using DefaultSetStopped = set_stopped_t();
+        };
 
-        template<
-            template<class ...> typename SetValue, 
-            template<class> typename SetError, 
-            class SetStopped,
-            template<class ... > typename Variant,
-            class ... More,
-            class ... Sigs
-            >
-        auto transform_sigs_fn(completion_signatures<Sigs...> *) 
-            -> Variant<transform_sig_t<Sigs, SetValue, SetError, SetStopped>...>;
+        template<class, class>
+        struct transform_sig_helper;
 
-        template<
-            class Sigs,
-            template<class ...> typename SetValue, 
-            template<class> typename SetError, 
-            class SetStopped,
-            template<class ... > typename Variant,
-            class ... More
-            >
-        using transform_completion_signatures = 
-            decltype(transform_sigs_fn<SetValue, SetError, SetStopped, Variant, More...>(Sigs{}));
+        template<class SetFunc, class ... Args>
+        struct transform_sig_helper<SetFunc, set_value_t(Args...)>
+        {
+            using Type = SetFunc::template SetValue<Args...>;
+        };
+
+        template<class SetFunc, class Error>
+        struct transform_sig_helper<SetFunc, set_error_t(Error)>
+        {
+            using Type = SetFunc::template SetError<Error>;
+        };
+
+        template<class SetFunc>
+        struct transform_sig_helper<SetFunc, set_stopped_t()>
+        {
+            using Type = SetFunc::SetStopped;
+        };
+
+        template<class Sig, class SetFunc>
+        using transform_sig_t = transform_sig_helper<SetFunc, Sig>::Type;
+
+        template<class Sigs, class SetFunc, template<class ... > typename Variant, class More>
+        struct transform_sigs_helper2;
+
+        template<class ... Sig, class SetFunc, template<class ... > typename Variant, class ... More>
+        struct transform_sigs_helper2<
+            completion_signatures<Sig...>, SetFunc, Variant, completion_signatures<More...>>
+        {
+            using Type = _munique_remove_void<Variant<transform_sig_t<Sig, SetFunc>..., More...>>;
+        };
 
     } // namespace _signatures
+
+    using _signatures::DefaultSetFunc;
+
+    template<class Sigs, class SetFunc = DefaultSetFunc,
+        template<class ... > typename Variant = completion_signatures,
+        class More = Variant<>
+        >
+    using transform_completion_signatures = 
+        _signatures::transform_sigs_helper2<Sigs, SetFunc, Variant, More>::Type;
 
     namespace _domain
     {
@@ -107,14 +123,16 @@ namespace vke::exec
     
     extern const transform_sender_t transform_sender;
 
+    constexpr auto get_sender_domain(const auto& sndr, const auto& ... env) noexcept;
+
     namespace _signatures
     {
         struct get_completion_signatures_t
         {
             static constexpr auto operator()(auto&& sndr, auto&& env) noexcept
-                requires requires {sndr.get_domain(env) -> sender;}
+                requires requires {transform_sender(decltype(get_sender_domain(sndr, env)){}, sndr, env);}
             {
-                auto new_sndr = sndr.get_domain(env);
+                auto new_sndr = transform_sender(decltype(get_sender_domain(sndr, env)){}, sndr, env);
 
                 if constexpr(requires{new_sndr.get_completion_signatures(env);})
                 {
@@ -146,6 +164,6 @@ namespace vke::exec
     inline constexpr get_completion_signatures_t get_completion_signatures{};
 
     template<class Sndr, class Env>
-    using completion_signatures_for = decltype(get_completion_signatures(Sndr{}, Env{}));
+    using completion_signatures_for = decltype(get_completion_signatures(std::declval<Sndr>(), std::declval<Env>()));
 
 } // namespace vke::exec

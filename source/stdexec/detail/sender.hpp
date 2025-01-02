@@ -36,6 +36,7 @@ namespace vke::exec
             };
     };
 
+    using _sender::sender_t;
     using _sender::sender;
     using _sender::sender_in;
 

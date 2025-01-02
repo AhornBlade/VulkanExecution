@@ -45,6 +45,11 @@ namespace vke::exec
                     static_assert(index == 0, "I don't know how to complete this operation.");
                     Tag()(std::move(rcvr), std::forward<Args>(args)...);
                 };
+            static constexpr auto get_completion_signatures = 
+                [](auto&& env, auto& data, auto ... child_sigs) -> completion_signatures<set_value_t()>
+                {
+                    return {};
+                };
         };
 
         template<class Tag>
@@ -172,8 +177,6 @@ namespace vke::exec
             }
         };
 
-        struct sender_t;
-
         template<class Tag, class Data, class... Child>
         struct basic_sender : decayed_tuple<Tag, Data, Child...> 
         {
@@ -201,10 +204,13 @@ namespace vke::exec
             }
 
             template<decays_to<basic_sender> Self, class Env>
-            auto get_completion_signatures(this Self&& self, Env&& env) noexcept
-            -> completion_signatures_for<Self, Env> 
+            constexpr auto get_completion_signatures(this Self&& self, Env&& env) noexcept
             {
-                return {};
+                return self.apply([&](auto, auto& data, Child& ... child)
+                {
+                    return impls_for<Tag>::get_completion_signatures(std::forward<Env>(env), data, 
+                        completion_signatures_for<Child, Env>{}...);
+                });
             }
         };
 

@@ -130,4 +130,54 @@ namespace vke::exec
     inline constexpr transform_env_t transform_env{};
     inline constexpr apply_sender_t apply_sender{};
 
+    namespace _get_sender_domain
+    {
+        template<class Sndr, class Tag>
+        using comple_domain_t = decltype(get_domain(get_completion_scheduler<Tag>(get_env(Sndr{}))));
+
+        template<class Sndr>
+        using common_comple_domain_t = std::common_type_t<
+            comple_domain_t<Sndr, set_value_t>, 
+            comple_domain_t<Sndr, set_error_t>,
+            comple_domain_t<Sndr, set_stopped_t>>;
+
+        template<class Sndr>
+        concept has_comple_domain = 
+            requires{ comple_domain_t<Sndr, set_value_t>{}; } ||
+            requires{ comple_domain_t<Sndr, set_error_t>{}; } ||
+            requires{ comple_domain_t<Sndr, set_stopped_t>{}; };
+
+        template<class Default = default_domain, class Sndr>
+        constexpr auto completion_domain(const Sndr& sndr) noexcept
+            requires (!has_comple_domain<Sndr>) && std::is_default_constructible_v<Default>
+        {
+            return Default{};
+        }
+
+        template<class Default = default_domain, class Sndr>
+        constexpr auto completion_domain(const Sndr& sndr) noexcept
+            requires requires{common_comple_domain_t<Sndr>{};}
+        {
+            return common_comple_domain_t<Sndr>{};
+        }
+
+    } // namespace _get_sender_domain
+
+    constexpr auto get_sender_domain(const auto& sndr, const auto& ... env) noexcept
+    {
+        static_assert(sizeof...(env) <= 1);
+        if constexpr( requires{ get_domain(get_env(sndr)); } )
+            return get_domain(get_env(sndr));
+        else if constexpr(requires{ _get_sender_domain::completion_domain(sndr); } && sizeof...(env) == 0)
+            return _get_sender_domain::completion_domain(sndr);
+        else if constexpr(requires{ _get_sender_domain::completion_domain<void>(sndr); } && sizeof...(env) == 1)
+            return _get_sender_domain::completion_domain<void>(sndr);
+        else if constexpr(requires{ get_domain(env...); } && sizeof...(env) == 1)
+            return get_domain(env...);
+        else if constexpr(requires{ get_domain(get_scheduler(env...)); } && sizeof...(env) == 1)
+            return get_domain(get_scheduler(env...));
+        else
+            return default_domain{};
+    }
+
 }// namespace vke::exec

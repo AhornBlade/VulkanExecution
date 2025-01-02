@@ -37,11 +37,20 @@ namespace vke::exec
         template<completion_tag CPO>
         struct impls_for<_just::just_tag_t<CPO>> : default_impls {
             static constexpr auto start =
-            [](auto& state, auto& rcvr) noexcept -> void {
-                state.apply([&](auto& ... args){
-                    CPO{}(std::move(rcvr), std::move(args)...);
-                });
-            };
+                [](auto& state, auto& rcvr) noexcept -> void {
+                    state.apply([&](auto& ... args){
+                        CPO{}(std::move(rcvr), std::move(args)...);
+                    });
+                };
+
+            static constexpr auto get_completion_signatures = 
+                [](auto&& env, auto& data, auto ... child_sigs)
+                {
+                    return data.apply([]<class ... Args>(Args& ... args)
+                    {
+                        return completion_signatures<CPO(Args...)>{};
+                    });
+                };
         };
     }
 
@@ -68,25 +77,52 @@ namespace vke::exec
         template<>
         struct impls_for<_read_env::read_env_t> : default_impls {
             static constexpr auto start =
-            [](auto query, auto& rcvr) noexcept -> void 
-            {
-                try
+                [](auto query, auto& rcvr) noexcept -> void 
                 {
-                    if constexpr(std::is_void_v<decltype(query(get_env(rcvr)))>)
+                    try
                     {
-                        query(get_env(rcvr));
-                        set_value(std::move(rcvr));
+                        if constexpr(std::is_void_v<decltype(query(get_env(rcvr)))>)
+                        {
+                            query(get_env(rcvr));
+                            set_value(std::move(rcvr));
+                        }
+                        else
+                        {
+                            set_value(std::move(rcvr), query(get_env(rcvr)));
+                        }
+                    } 
+                    catch (...) 
+                    {
+                        set_error(std::move(rcvr), std::current_exception());
+                    }
+                };
+            
+            static constexpr auto get_completion_signatures = 
+                [](auto&& env, auto& data, auto ... child_sigs)
+                {
+                    if constexpr(std::is_void_v<decltype(data(env))>)
+                    {
+                        if constexpr(noexcept(data(env)))
+                        {
+                            return completion_signatures<set_value_t()>{};
+                        }
+                        else
+                        {
+                            return completion_signatures<set_value_t(), set_error_t(std::exception_ptr)>{};
+                        }
                     }
                     else
                     {
-                        set_value(std::move(rcvr), query(get_env(rcvr)));
+                        if constexpr(noexcept(data(env)))
+                        {
+                            return completion_signatures<set_value_t(decltype(data(env)))>{};
+                        }
+                        else
+                        {
+                            return completion_signatures<set_value_t(decltype(data(env))), set_error_t(std::exception_ptr)>{};
+                        }
                     }
-                } 
-                catch (...) 
-                {
-                    set_error(std::move(rcvr), std::current_exception());
-                }
-            };
+                };
         };
     }
 
@@ -100,7 +136,9 @@ namespace vke::exec
             template<sender Sndr, movable_value Func>
             constexpr static sender decltype(auto) operator()(Sndr&& sndr, Func&& func)
             {
-                return _basic::basic_sender{Tag{}, std::forward<Func>(func), std::forward<Sndr>(sndr)};
+                return transform_sender(
+                    get_sender_domain(sndr),
+                    _basic::basic_sender{Tag{}, std::forward<Func>(func), std::forward<Sndr>(sndr)});
             }
 
             template<movable_value Func>
@@ -126,27 +164,100 @@ namespace vke::exec
             static constexpr auto complete = 
             []<class Tag, class... Args>
             (auto, auto& fn, auto& rcvr, Tag, Args&&... args) noexcept -> void 
-            {
-                if constexpr (std::same_as<Tag, CPO>) 
                 {
-                    try {
-                        if constexpr(std::is_void_v<decltype(std::invoke(std::move(fn), std::forward<Args>(args)...))>)
-                        {
-                            std::invoke(std::move(fn), std::forward<Args>(args)...);
-                            set_value(std::move(rcvr));
+                    static_assert(requires{std::invoke(std::move(fn), std::forward<Args>(args)...);},
+                        " the function in upon sender cannot invoke with arguments ");
+                    if constexpr (std::same_as<Tag, CPO>) 
+                    {
+                        try {
+                            if constexpr(std::is_void_v<decltype(std::invoke(std::move(fn), std::forward<Args>(args)...))>)
+                            {
+                                std::invoke(std::move(fn), std::forward<Args>(args)...);
+                                set_value(std::move(rcvr));
+                            }
+                            else
+                            {
+                                set_value(std::move(rcvr), std::invoke(std::move(fn), std::forward<Args>(args)...));
+                            }
+                        } catch (...) {
+                            set_error(std::move(rcvr), std::current_exception());
                         }
-                        else
-                        {
-                            set_value(std::move(rcvr), std::invoke(std::move(fn), std::forward<Args>(args)...));
-                        }
-                    } catch (...) {
-                        set_error(std::move(rcvr), std::current_exception());
-                    }
 
-                } else {
-                    Tag()(std::move(rcvr), std::forward<Args>(args)...);
-                }
+                    } else {
+                        Tag()(std::move(rcvr), std::forward<Args>(args)...);
+                    }
+                };
+
+            template<class Func>
+            struct ReturnValue
+            {
+                template<class Return>
+                struct ReturnHelper
+                {
+                    using Type = set_value_t(Return);
+                };
+                
+                template<>
+                struct ReturnHelper<void>
+                {
+                    using Type = set_value_t();
+                };
+
+                template<class SetCPO, class ... Args>
+                struct ValueHelper
+                {
+                    using Type = SetCPO(Args...);
+                };
+                
+                template<class ... Args>
+                struct ValueHelper<CPO, Args...>
+                {
+                    using Type = ReturnHelper<std::invoke_result_t<Func, Args...>>::Type;
+                };
+
+                template<class ... Args>
+                using SetValue = ValueHelper<set_value_t, Args...>::Type;
+
+                template<class Error>
+                using SetError = ValueHelper<set_error_t, Error>::Type;
+
+                using SetStopped = ValueHelper<set_stopped_t>::Type;
             };
+
+            
+            template<class Func>
+            struct ErrorValue
+            {
+                template<class SetCPO, class ... Args>
+                struct ValueHelper
+                {
+                    using Type = void;
+                };
+                
+                template<class ... Args>
+                struct ValueHelper<CPO, Args...>
+                {
+                    using Type = std::conditional_t<
+                        std::is_nothrow_invocable_v<Func, Args...>, void, set_error_t(std::exception_ptr)>;
+                };
+
+                template<class ... Args>
+                using SetValue = ValueHelper<set_value_t, Args...>::Type;
+
+                template<class Error>
+                using SetError = ValueHelper<set_error_t, Error>::Type;
+
+                using SetStopped = ValueHelper<set_stopped_t>::Type;
+            };
+            
+            static constexpr auto get_completion_signatures = 
+                []<class Env, class Func, class ChildSigs>(Env&&, Func&&, ChildSigs&&)
+                    -> transform_completion_signatures<ChildSigs, ReturnValue<Func>, completion_signatures,
+                            transform_completion_signatures<ChildSigs, ErrorValue<Func>>
+                        >
+                {
+                    return {};
+                };
         };
     }
 
