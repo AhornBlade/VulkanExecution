@@ -11,6 +11,13 @@ namespace vke::exec
     template<class Sndr, class Env>
     using await_result_type = int; // to do
 
-    auto connect_awaitable(auto&& sndr, auto&& rcvr);
+    template<class T>
+    concept always_false = false;
+
+    auto connect_awaitable(auto&& sndr, auto&& rcvr)
+        requires always_false<decltype(sndr)>
+    {
+        return 1;
+    }
 
 } // namespace vke::exec

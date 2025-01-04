@@ -64,7 +64,7 @@ namespace vke::exec
         };
 
         template<class Sndr>
-        using sender_traits = decltype(Sndr{}.apply(
+        using sender_traits = decltype(std::declval<Sndr>().apply(
             []<class Tag, class Data, class... Child>(Tag, Data, Child...) -> decltype(auto)
             {
                 return sender_traits_helper<Tag, Data, Child...>{};

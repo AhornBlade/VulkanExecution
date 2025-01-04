@@ -47,7 +47,7 @@ namespace vke::exec
             template<sender Sndr, receiver Rcvr>
             constexpr static operation_state decltype(auto) operator()(Sndr&& sndr, Rcvr&& rcvr)
             {
-                sender auto new_sndr = transform_sender(decltype(sndr.get_domain(get_env(rcvr))){}, sndr, get_env(rcvr));
+                sender auto new_sndr = transform_sender(decltype(get_sender_domain(sndr, get_env(rcvr))){}, sndr, get_env(rcvr));
 
                 if constexpr(requires{ new_sndr.connect(rcvr); })
                 {
@@ -55,7 +55,7 @@ namespace vke::exec
                         "Customizations of connect must return an operation_state.");
                     return new_sndr.connect(rcvr);
                 }
-                else if(requires{connect_awaitable(new_sndr, rcvr);})
+                else if constexpr(requires{connect_awaitable(new_sndr, rcvr);})
                 {
                     return connect_awaitable(new_sndr, rcvr);
                 }
@@ -67,5 +67,9 @@ namespace vke::exec
         };
 
     } // namespace _connect
+
+    using _connect::connect_t;
+
+    inline constexpr connect_t connect{};
     
 } // namespace vke::exec

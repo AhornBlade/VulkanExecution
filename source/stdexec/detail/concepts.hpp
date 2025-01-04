@@ -81,6 +81,11 @@ namespace vke::exec
             return std::apply(func, std::forward<Self>(self)._tuple);
         }
 
+        operator std::tuple<Ts...>() const noexcept
+        {
+            return _tuple;
+        }
+
         std::tuple<Ts...> _tuple;
     };
 
