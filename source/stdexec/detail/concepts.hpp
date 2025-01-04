@@ -57,6 +57,12 @@ namespace vke::exec
     using _munique_remove_void = _munique::munique_remove_void_helper<TypeList>::Type;
 
     template<class ... Ts>
+    struct and_all
+    {
+        constexpr static bool value = (Ts::value && ...);
+    };
+
+    template<class ... Ts>
     struct typelist {};
 
     template<template<class...> class T, class... Args>

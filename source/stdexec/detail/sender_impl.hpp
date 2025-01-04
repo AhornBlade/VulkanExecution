@@ -133,9 +133,31 @@ namespace vke::exec
         {
             using Tag = upon_tag_t;
 
+            template<class Func>
+            struct CheckValue
+            {
+                template<class ... Args>
+                using SetValue = std::conditional_t<
+                    std::same_as<set_value_t, CPO> && (!std::invocable<Func, Args...>), 
+                    std::false_type, std::true_type>;
+
+                template<class Error>
+                using SetError = std::conditional_t<
+                    std::same_as<set_error_t, CPO> && (!std::invocable<Func, Error>), 
+                    std::false_type, std::true_type>;
+
+                using SetStopped = std::conditional_t<
+                    std::same_as<set_stopped_t, CPO> && (!std::invocable<Func>), 
+                    std::false_type, std::true_type>;
+            };
+
             template<sender Sndr, movable_value Func>
             constexpr static sender decltype(auto) operator()(Sndr&& sndr, Func&& func)
             {
+                static_assert(transform_completion_signatures<
+                    completion_signatures_for<Sndr, empty_env>, CheckValue<Func>, and_all>::value,
+                    "The function in upon sender must be able to accept all the outgoing values ​​of the previous sender");
+
                 return transform_sender(
                     get_sender_domain(sndr),
                     _basic::basic_sender{Tag{}, std::forward<Func>(func), std::forward<Sndr>(sndr)});
@@ -223,7 +245,6 @@ namespace vke::exec
 
                 using SetStopped = ValueHelper<set_stopped_t>::Type;
             };
-
             
             template<class Func>
             struct ErrorValue
@@ -252,9 +273,10 @@ namespace vke::exec
             
             static constexpr auto get_completion_signatures = 
                 []<class Env, class Func, class ChildSigs>(Env&&, Func&&, ChildSigs&&)
-                    -> transform_completion_signatures<ChildSigs, ReturnValue<Func>, completion_signatures,
+                    -> _munique_remove_void<
+                        transform_completion_signatures<ChildSigs, ReturnValue<Func>, completion_signatures,
                             transform_completion_signatures<ChildSigs, ErrorValue<Func>>
-                        >
+                        >>
                 {
                     return {};
                 };

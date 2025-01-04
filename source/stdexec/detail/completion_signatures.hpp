@@ -98,9 +98,9 @@ namespace vke::exec
 
         template<class ... Sig, class SetFunc, template<class ... > typename Variant, class ... More>
         struct transform_sigs_helper2<
-            completion_signatures<Sig...>, SetFunc, Variant, completion_signatures<More...>>
+            completion_signatures<Sig...>, SetFunc, Variant, Variant<More...>>
         {
-            using Type = _munique_remove_void<Variant<transform_sig_t<Sig, SetFunc>..., More...>>;
+            using Type = Variant<transform_sig_t<Sig, SetFunc>..., More...>;
         };
 
     } // namespace _signatures
