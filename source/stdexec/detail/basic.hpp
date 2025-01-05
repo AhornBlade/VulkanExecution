@@ -46,9 +46,16 @@ namespace vke::exec
                     Tag()(std::move(rcvr), std::forward<Args>(args)...);
                 };
             static constexpr auto get_completion_signatures = 
-                [](auto&& env, auto& data, auto ... child_sigs) -> completion_signatures<set_value_t()>
+                []<class ... Sigs>(auto&& env, auto& data, Sigs ... child_sigs)
                 {
-                    return {};
+                    if constexpr(sizeof...(Sigs) == 0)
+                    {
+                        return completion_signatures<>{};
+                    }
+                    else
+                    {
+                        return mconcat<Sigs...>{};
+                    }
                 };
         };
 

@@ -24,6 +24,9 @@ namespace vke::exec
 
     inline constexpr schedule_t schedule{};
 
+    template<class Sch>
+    using schedule_result_t = std::invoke_result_t<schedule_t, Sch>;
+
     struct scheduler_t {};
 
     template<class Sch>

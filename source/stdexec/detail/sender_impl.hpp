@@ -1,6 +1,10 @@
 #pragma once
 
 #include "basic.hpp"
+#include "scheduler.hpp"
+#include "domain.hpp"
+
+#include <variant>
 
 namespace vke::exec
 {
@@ -187,8 +191,6 @@ namespace vke::exec
             []<class Tag, class... Args>
             (auto, auto& fn, auto& rcvr, Tag, Args&&... args) noexcept -> void 
                 {
-                    static_assert(requires{std::invoke(std::move(fn), std::forward<Args>(args)...);},
-                        " the function in upon sender cannot invoke with arguments ");
                     if constexpr (std::same_as<Tag, CPO>) 
                     {
                         try {
@@ -252,7 +254,7 @@ namespace vke::exec
                 template<class SetCPO, class ... Args>
                 struct ValueHelper
                 {
-                    using Type = void;
+                    using Type = empty_type;
                 };
                 
                 template<class ... Args>
@@ -273,7 +275,7 @@ namespace vke::exec
             
             static constexpr auto get_completion_signatures = 
                 []<class Env, class Func, class ChildSigs>(Env&&, Func&&, ChildSigs&&)
-                    -> _munique_remove_void<
+                    -> _munique_remove_empty<
                         transform_completion_signatures<ChildSigs, ReturnValue<Func>, completion_signatures,
                             transform_completion_signatures<ChildSigs, ErrorValue<Func>>
                         >>
@@ -283,6 +285,6 @@ namespace vke::exec
         };
     }
 
-    
+
 
 }// namespace vke::exec

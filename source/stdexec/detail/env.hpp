@@ -208,20 +208,35 @@ namespace vke::exec
 
     namespace _env
     {
-        template<class ... Envs>
-        struct env : decayed_tuple<Envs...>
+        template<class Env>
+        struct env
         {
-            using decayed_tuple<Envs...>::decayed_tuple;
+            template<class Self, class Query, class ... Args>
+            constexpr auto query(Self&& self, Query q, Args&& ... args)
+                requires requires{std::forward<Self>(self).query(q, std::forward<Args>(args)...);}
+            {
+                return std::forward<Self>(self).query(q, std::forward<Args>(args)...);
+            }
         };
 
-        template<>
-        struct env<> {};
+        template<class ... Envs>
+        struct basic_env : env<Envs>...
+        {
+            template<class ... EnvClass>
+            basic_env(EnvClass&& ... envs) : env<Envs>{static_cast<Envs>(envs)}... {}
 
-        using empty_env = env<>;
+            using env<Envs>::query...;
+        };
+
+        
+        template<class ... EnvClass>
+        basic_env(EnvClass&& ... envs) -> basic_env<std::decay_t<EnvClass>...>;
+
+        using empty_env = basic_env<>;
 
     } // namespace _env
 
-    using _env::env;
+    using _env::basic_env;
     using _env::empty_env;
 
     namespace _get_env

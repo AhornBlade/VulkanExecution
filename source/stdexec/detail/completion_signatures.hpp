@@ -61,12 +61,23 @@ namespace vke::exec
         struct DefaultSetFunc
         {
             template<class ... Args>
-            using DefaultSetValue = set_value_t(Args...);
+            using SetValue = set_value_t(Args...);
 
             template<class Error>
-            using DefaultSetError = set_error_t(Error);
+            using SetError = set_error_t(Error);
 
-            using DefaultSetStopped = set_stopped_t();
+            using SetStopped = set_stopped_t();
+        };
+
+        struct EmptySetFunc
+        {
+            template<class ... Args>
+            using SetValue = empty_type;
+
+            template<class Error>
+            using SetError = empty_type;
+
+            using SetStopped = empty_type;
         };
 
         template<class, class>
@@ -106,6 +117,7 @@ namespace vke::exec
     } // namespace _signatures
 
     using _signatures::DefaultSetFunc;
+    using _signatures::EmptySetFunc;
 
     template<class Sigs, class SetFunc = DefaultSetFunc,
         template<class ... > typename Variant = completion_signatures,

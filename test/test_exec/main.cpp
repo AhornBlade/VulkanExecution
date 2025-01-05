@@ -1,4 +1,4 @@
-#include "execution.hpp"
+#include <execution.hpp>
 
 #include <iostream>
 
@@ -39,10 +39,9 @@ struct test_receiver
 
 int main()
 {
-    auto func1 = [](int c) -> int
+    auto func1 = []()
     {
-        throw std::runtime_error("test runtime error");
-        return c;
+        return std::this_thread::get_id();
     };
 
     auto func2 = [](auto e) noexcept -> int
@@ -50,8 +49,13 @@ int main()
         return 1;
     };
 
+    thread_pool pool1{1};
+    thread_pool pool2{1};
+
+    std::cout << "main thread " << std::this_thread::get_id() << '\n';
+
     sender auto sndr1 = 
-        just(1) | 
+        schedule(pool1.get_scheduler()) |
         then(func1);
 
     auto op = connect(sndr1, test_receiver{});

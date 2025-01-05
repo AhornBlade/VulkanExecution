@@ -71,5 +71,8 @@ namespace vke::exec
     using _connect::connect_t;
 
     inline constexpr connect_t connect{};
+
+    template<sender Sndr, receiver Rcvr>
+    using connect_result_t = std::invoke_result_t<connect_t, Sndr, Rcvr>;
     
 } // namespace vke::exec
