@@ -213,7 +213,7 @@ namespace vke::exec
         class thread_pool
         {
         public:
-            explicit thread_pool(uint32_t thread_count)
+            explicit thread_pool(uint32_t thread_count = 1)
             {
                 _threads.reserve(thread_count);
                 for(uint32_t i = 0; i < thread_count; i++)
@@ -223,6 +223,11 @@ namespace vke::exec
                         _loop.run();
                     });
                 }
+            }
+
+            ~thread_pool() noexcept
+            {
+                _loop.finish();
             }
 
             scheduler auto get_scheduler() noexcept
