@@ -31,7 +31,7 @@ namespace vke::exec
                 };
             static constexpr auto get_state = 
                 []<class Sndr, class Rcvr>(Sndr&& sndr, Rcvr& rcvr) noexcept -> decltype(auto) {
-                    return std::forward<Sndr>(sndr).apply(get_data{});
+                    return std::apply(get_data{}, std::forward<Sndr>(sndr)._tuple);
                 };
             static constexpr auto start = 
                 [](auto&, auto&, auto&... ops) noexcept -> void {
@@ -71,11 +71,11 @@ namespace vke::exec
         };
 
         template<class Sndr>
-        using sender_traits = decltype(std::declval<Sndr>().apply(
+        using sender_traits = decltype(std::apply(
             []<class Tag, class Data, class... Child>(Tag, Data, Child...) -> decltype(auto)
             {
                 return sender_traits_helper<Tag, Data, Child...>{};
-            }));
+            }, std::declval<Sndr>()._tuple));
 
         template<class Sndr>
         using tag_of_t = sender_traits<Sndr>::tag;
@@ -143,13 +143,13 @@ namespace vke::exec
             basic_state<Sndr, Rcvr>* op, Sndr&& sndr, std::index_sequence<Is...>)
                 -> decltype(auto) 
             {
-                return std::forward<Sndr>(sndr).apply(
+                return std::apply(
                 [&]<class ... Child>(auto&, auto& data, Child& ... child)
                 {
-                    return base_tuple{connect(
+                    return std::tuple{connect(
                         std::forward<Child>(child),
                         basic_receiver<Sndr, Rcvr, std::integral_constant<size_t, Is>>{op})...};
-                });
+                }, std::forward<Sndr>(sndr)._tuple);
             };
 
         template<class Sndr>
@@ -177,29 +177,29 @@ namespace vke::exec
 
             void start() & noexcept 
             {
-                inner_ops.apply([&](auto& ... ops)
+                std::apply([&](auto& ... ops)
                 {
                     impls_for<tag_t>::start(this->state, this->rcvr, ops...);
-                });
+                }, inner_ops);
             }
         };
 
         template<class Tag, class Data, class... Child>
-        struct basic_sender : decayed_tuple<Tag, Data, Child...> 
+        struct basic_sender
         {
             using sender_concept = sender_t;
             using indices_for = std::index_sequence_for<Child...>;
+            using tuple_type = decayed_tuple<Tag, Data, Child...>;
 
             template<class _Tag, class _Data, class ... _Child>
             basic_sender(_Tag tag, _Data&& data, _Child&& ... child)
-                : decayed_tuple<Tag, Data, Child...>
-                { tag, std::forward<_Data>(data), std::forward<_Child>(child)... } {}
+                : _tuple{ tag, std::forward<_Data>(data), std::forward<_Child>(child)... } {}
 
             decltype(auto) get_env() const noexcept {
-                return this->apply([](auto, auto& data, auto& ... child)
+                return std::apply([](auto, auto& data, auto& ... child)
                 {
                     return impls_for<Tag>::get_attrs(data, child...);
-                });
+                }, _tuple);
             }
 
             template<decays_to<basic_sender> Self, receiver Rcvr>
@@ -213,12 +213,20 @@ namespace vke::exec
             template<decays_to<basic_sender> Self, class Env>
             constexpr auto get_completion_signatures(this Self&& self, Env&& env) noexcept
             {
-                return self.apply([&](auto, auto& data, Child& ... child)
+                return std::apply([&](auto, auto& data, Child& ... child)
                 {
                     return impls_for<Tag>::get_completion_signatures(std::forward<Env>(env), data, 
                         completion_signatures_for<Child, Env>{}...);
-                });
+                }, self._tuple);
             }
+            
+            template<std::size_t I, decays_to<basic_sender> Self>
+            decltype(auto) get(this Self&& self) noexcept
+            {
+                return ::std::get<I>(std::forward_like<Self>(self._tuple));
+            }
+
+            tuple_type _tuple;
         };
 
         template<class _Tag, class _Data, class ... _Child>
@@ -227,11 +235,11 @@ namespace vke::exec
     }// namespace _basic
 
     template<class Tag, class ... Ts>
-    struct sender_adaptor_closure : base_tuple<Ts...>
+    struct sender_adaptor_closure
     {
         template<class _Tag, class ... _Ts>
-        sender_adaptor_closure(_Tag, _Ts&& ... args) 
-            : base_tuple<Ts...>{std::forward<_Ts>(args)...} {}
+        constexpr sender_adaptor_closure(_Tag, _Ts&& ... args) 
+            : _tuple{std::forward<_Ts>(args)...} {}
 
         template<typename S, template<typename...> typename Fn>
             using tuple_apply = Fn<Tag, S, Ts...>;
@@ -241,11 +249,13 @@ namespace vke::exec
             noexcept(tuple_apply<Sndr, std::is_nothrow_invocable>::value)
             requires tuple_apply<Sndr, std::is_invocable>::value
         {
-            return std::forward<Self>(self).apply([&sndr]<class ... Args>(Args&& ... args)
+            return std::apply([&sndr]<class ... Args>(Args&& ... args)
             {
                 return Tag{}(std::forward<Sndr>(sndr), std::forward<Args>(args)...);
-            });
+            }, std::forward<Self>(self)._tuple);
         }
+
+        std::tuple<Ts...> _tuple;
     };
 
     template<class _Tag, class ... _Ts>

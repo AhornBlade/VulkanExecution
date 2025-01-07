@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <tuple>
+#include <variant>
 
 namespace vke::exec
 {
@@ -95,30 +96,30 @@ namespace vke::exec
     concept valid_specialization = requires { typename T<Args...>; };
 
     template<class ... Ts>
-    struct base_tuple
+    using decayed_tuple = std::tuple<std::decay_t<Ts>...>;
+
+    namespace _variant_or_empty
     {
-        template<class ... Args>
-        base_tuple(Args&& ... args) : _tuple{ std::forward<Args>(args)... } {}
+        struct empty_variant {};
 
-        template<class Self, class Func>
-        constexpr decltype(auto) apply(this Self&& self, Func&& func) 
-            noexcept(noexcept(std::apply(func, std::forward<Self>(self)._tuple)))
+        template<class ... Ts>
+        struct variant_or_empty_impl
         {
-            return std::apply(func, std::forward<Self>(self)._tuple);
-        }
+            using Type = std::variant<Ts...>;
+        };
 
-        operator std::tuple<Ts...>() const noexcept
+        template<>
+        struct variant_or_empty_impl<>
         {
-            return _tuple;
-        }
+            using Type = empty_variant;
+        };
 
-        std::tuple<Ts...> _tuple;
-    };
+        template<class ... Ts>
+        using variant_or_empty = variant_or_empty_impl<std::decay_t<Ts>...>;
 
-    template<class ... Args>
-    base_tuple(Args&& ... args) -> base_tuple<Args...>;
+    } // namespace _variant_or_empty
 
-    template<class ... Ts>
-    using decayed_tuple = base_tuple<std::decay_t<Ts>...>;
-
+    using _variant_or_empty::empty_variant;
+    using _variant_or_empty::variant_or_empty;
+    
 } // namespace vke::exec
