@@ -3,8 +3,6 @@
 #include "concepts.hpp"
 #include "stop_token.hpp"
 
-#include <tuple>
-
 namespace vke::exec
 {  
     namespace _rcvrs 
@@ -222,15 +220,17 @@ namespace vke::exec
         template<class ... Envs>
         struct basic_env : env<Envs>...
         {
-            template<class ... EnvClass>
-            basic_env(EnvClass&& ... envs) : env<Envs>{static_cast<Envs>(envs)}... {}
+            basic_env() = default;
+            basic_env(const basic_env &) = default;
+            basic_env& operator=(const basic_env &) = default;
+            basic_env(basic_env&&) noexcept = default;
+            basic_env& operator=(basic_env&&) noexcept = default;
 
             using env<Envs>::query...;
         };
 
-        
-        template<class ... EnvClass>
-        basic_env(EnvClass&& ... envs) -> basic_env<std::decay_t<EnvClass>...>;
+        template<>
+        struct basic_env<> {};
 
         using empty_env = basic_env<>;
 

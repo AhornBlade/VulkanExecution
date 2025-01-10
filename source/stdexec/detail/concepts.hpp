@@ -64,13 +64,13 @@ namespace vke::exec
         template<class ... TypeLists>
         struct mconcat_helper;
 
-        template<template<class> typename ListType, class ... Ts>
+        template<template<class...> typename ListType, class ... Ts>
         struct mconcat_helper<ListType<Ts...>>
         {
             using Type = ListType<Ts...>;
         };
 
-        template<template<class> typename ListType, class ... Ts, class ... Us, class ... TypeLists>
+        template<template<class...> typename ListType, class ... Ts, class ... Us, class ... TypeLists>
         struct mconcat_helper<ListType<Ts...>, ListType<Us...>, TypeLists...>
         {
             using Type = mconcat_helper<ListType<Ts..., Us...>, TypeLists...>::Type;
@@ -103,23 +103,24 @@ namespace vke::exec
         struct empty_variant {};
 
         template<class ... Ts>
-        struct variant_or_empty_impl
+        struct variant_or_empty
         {
             using Type = std::variant<Ts...>;
         };
 
         template<>
-        struct variant_or_empty_impl<>
+        struct variant_or_empty<>
         {
             using Type = empty_variant;
         };
 
         template<class ... Ts>
-        using variant_or_empty = variant_or_empty_impl<std::decay_t<Ts>...>;
+        using variant_or_empty_t = variant_or_empty<std::decay_t<Ts>...>::Type;
 
     } // namespace _variant_or_empty
 
     using _variant_or_empty::empty_variant;
+    using _variant_or_empty::variant_or_empty_t;
     using _variant_or_empty::variant_or_empty;
     
 } // namespace vke::exec

@@ -36,17 +36,22 @@ struct test_receiver
     }
 };
 
+struct CompleSigValue : DefaultSetFunc
+{
+    template<class ... Args>
+    using SetValue = decayed_tuple<Args...>;
+};
 
 int main()
 {
-    auto func1 = []()
+    auto func1 = [](int i) noexcept
     {
-        return std::this_thread::get_id();
+        return 42;
     };
 
-    auto func2 = [](auto e) noexcept -> int
+    auto func2 = [](auto&& e)
     {
-        return 1;
+        return just(e + 42);
     };
 
     thread_pool pool1{1};
@@ -55,12 +60,14 @@ int main()
     std::cout << "main thread " << std::this_thread::get_id() << '\n';
 
     sender auto sndr1 = 
-        schedule(pool1.get_scheduler()) |
-        then(func1);
+        // schedule(pool1.get_scheduler()) |
+        just(1) | 
+        then(func1) |
+        let(func2);
 
     auto op = connect(sndr1, test_receiver{});
 
-    op.start();
+    start(op);
 
     // using Tag = completion_signatures_for<decltype(sndr0), empty_env>;
     using Tag1 = completion_signatures_for<decltype(sndr1), empty_env>;

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "scheduler.hpp"
-#include "sender.hpp"
 #include "basic.hpp"
 
 #include <vector>

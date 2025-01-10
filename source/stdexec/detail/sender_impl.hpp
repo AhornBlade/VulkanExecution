@@ -1,10 +1,7 @@
 #pragma once
 
 #include "basic.hpp"
-#include "scheduler.hpp"
 #include "domain.hpp"
-
-#include <variant>
 
 namespace vke::exec
 {
@@ -16,7 +13,7 @@ namespace vke::exec
             using Tag = just_tag_t;
 
             template<movable_value ... Args>
-            constexpr static sender decltype(auto) operator()(Args&& ... args)
+            constexpr static sender decltype(auto) operator()(Args&& ... args) noexcept
             {
                 static_assert(!(std::same_as<CPO, set_error_t> && sizeof...(args) != 1), 
                     "set_error can only accept 1 argument");
@@ -41,9 +38,9 @@ namespace vke::exec
         template<completion_tag CPO>
         struct impls_for<_just::just_tag_t<CPO>> : default_impls {
             static constexpr auto start =
-                [](auto& state, auto& rcvr) noexcept -> void {
+                []<class ... Args>(std::tuple<Args...>& state, auto& rcvr) noexcept -> void {
                     std::apply([&](auto& ... args){
-                        CPO{}(std::move(rcvr), std::move(args)...);
+                        CPO{}(std::move(rcvr), static_cast<Args>(args)...);
                     }, state);
                 };
 
@@ -65,7 +62,7 @@ namespace vke::exec
             using Tag = read_env_t;
 
             template<class Q>
-            constexpr static sender decltype(auto) operator()(Q&& q)
+            constexpr static sender decltype(auto) operator()(Q&& q) noexcept
             {
                 return _basic::basic_sender{Tag{}, std::forward<Q>(q)};
             }
@@ -156,7 +153,7 @@ namespace vke::exec
             };
 
             template<sender Sndr, movable_value Func>
-            constexpr static sender decltype(auto) operator()(Sndr&& sndr, Func&& func)
+            constexpr static sender decltype(auto) operator()(Sndr&& sndr, Func&& func) noexcept
             {
                 static_assert(transform_completion_signatures<
                     completion_signatures_for<Sndr, empty_env>, CheckValue<Func>, and_all>::value,
@@ -168,7 +165,7 @@ namespace vke::exec
             }
 
             template<movable_value Func>
-            constexpr static decltype(auto) operator()(Func&& func)
+            constexpr static decltype(auto) operator()(Func&& func) noexcept
             {
                 return sender_adaptor_closure{Tag{}, std::forward<Func>(func)};
             }
@@ -188,27 +185,27 @@ namespace vke::exec
         template<completion_tag CPO>
         struct impls_for<_upon::upon_tag_t<CPO>> : default_impls {
             static constexpr auto complete = 
-            []<class Tag, class... Args>
-            (auto, auto& fn, auto& rcvr, Tag, Args&&... args) noexcept -> void 
+            []<class Tag, class Sndr, class Rcvr, class... Args>
+            (auto, basic_state<Sndr, Rcvr>* op, Tag, Args&&... args) noexcept -> void 
                 {
                     if constexpr (std::same_as<Tag, CPO>) 
                     {
                         try {
-                            if constexpr(std::is_void_v<decltype(std::invoke(std::move(fn), std::forward<Args>(args)...))>)
+                            if constexpr(std::is_void_v<decltype(std::invoke(std::move(op->state), std::forward<Args>(args)...))>)
                             {
-                                std::invoke(std::move(fn), std::forward<Args>(args)...);
-                                set_value(std::move(rcvr));
+                                std::invoke(std::move(op->state), std::forward<Args>(args)...);
+                                set_value(std::move(op->rcvr));
                             }
                             else
                             {
-                                set_value(std::move(rcvr), std::invoke(std::move(fn), std::forward<Args>(args)...));
+                                set_value(std::move(op->rcvr), std::invoke(std::move(op->state), std::forward<Args>(args)...));
                             }
                         } catch (...) {
-                            set_error(std::move(rcvr), std::current_exception());
+                            set_error(std::move(op->rcvr), std::current_exception());
                         }
 
                     } else {
-                        Tag()(std::move(rcvr), std::forward<Args>(args)...);
+                        Tag()(std::move(op->rcvr), std::forward<Args>(args)...);
                     }
                 };
 
@@ -261,7 +258,7 @@ namespace vke::exec
                 struct ValueHelper<CPO, Args...>
                 {
                     using Type = std::conditional_t<
-                        std::is_nothrow_invocable_v<Func, Args...>, void, set_error_t(std::exception_ptr)>;
+                        std::is_nothrow_invocable_v<Func, Args...>, empty_type, set_error_t(std::exception_ptr)>;
                 };
 
                 template<class ... Args>
@@ -285,6 +282,191 @@ namespace vke::exec
         };
     }
 
+    namespace _let
+    {
+        template<completion_tag CPO>
+        struct let_tag_t
+        {
+            using Tag = let_tag_t;
+            
+            template<class Func>
+            struct CheckValue
+            {
+                template<class ... Args>
+                using SetValue = std::conditional_t<
+                    std::same_as<set_value_t, CPO> && (!std::invocable<Func, Args...>), 
+                    std::false_type, std::true_type>;
+
+                template<class Error>
+                using SetError = std::conditional_t<
+                    std::same_as<set_error_t, CPO> && (!std::invocable<Func, Error>), 
+                    std::false_type, std::true_type>;
+
+                using SetStopped = std::conditional_t<
+                    std::same_as<set_stopped_t, CPO> && (!std::invocable<Func>), 
+                    std::false_type, std::true_type>;
+            };
+                        
+            template<class Func>
+            struct CheckReturnValue
+            {
+                template<class SetCPO, class ... Ts>
+                struct CheckReturnValueHelper : std::true_type {};
+
+                template<class ... Ts>
+                struct CheckReturnValueHelper<CPO, Ts...>
+                {
+                    static constexpr bool value = sender<std::invoke_result_t<Func, Ts...>>;
+                };
+
+                template<class ... Args>
+                using SetValue = CheckReturnValueHelper<set_value_t, Args...>;
+
+                template<class Error>
+                using SetError = CheckReturnValueHelper<set_error_t, Error>;
+
+                using SetStopped = CheckReturnValueHelper<set_stopped_t>;
+            };
+
+            template<sender Sndr, movable_value Func>
+            constexpr static sender decltype(auto) operator()(Sndr&& sndr, Func&& func) noexcept
+            {
+                static_assert(transform_completion_signatures<
+                    completion_signatures_for<Sndr, empty_env>, CheckValue<Func>, and_all>::value,
+                    "The function in let sender must be able to accept all the outgoing values ​​of the previous sender");
+
+                static_assert(transform_completion_signatures<
+                    completion_signatures_for<Sndr, empty_env>, CheckReturnValue<Func>, and_all>::value,
+                    "The function in let sender must return a sender");
+
+                return transform_sender(
+                    get_sender_domain(sndr),
+                    _basic::basic_sender{Tag{}, std::forward<Func>(func), std::forward<Sndr>(sndr)});
+            }
+            
+            template<movable_value Func>
+            constexpr static decltype(auto) operator()(Func&& func) noexcept
+            {
+                return sender_adaptor_closure{Tag{}, std::forward<Func>(func)};
+            }
+        };
+    } // namespace _let
+
+    using let_t = _let::let_tag_t<set_value_t>;
+    using let_error_t = _let::let_tag_t<set_error_t>;
+    using let_stopped_t = _let::let_tag_t<set_stopped_t>;
+
+    inline constexpr let_t let{};
+    inline constexpr let_error_t let_error{};
+    inline constexpr let_stopped_t let_stopped{};
+
+    namespace _basic
+    {
+        template<completion_tag CPO>
+        struct impls_for<_let::let_tag_t<CPO>> : default_impls 
+        {
+            static constexpr auto get_state = 
+                []<class Sndr, class Rcvr>(Sndr&& sndr, Rcvr& rcvr) noexcept -> decltype(auto) 
+                {
+                    using func_t = decltype(default_impls::get_state(std::forward<Sndr>(sndr), rcvr));
+
+                    using env_t = decltype([&]{
+                        if constexpr(requires{ exec::get_env(get_completion_scheduler<CPO>(get_env(sndr))); })
+                            return exec::get_env(get_completion_scheduler<CPO>(get_env(sndr)));
+                        else if constexpr(requires{ exec::get_env(sndr); })
+                            return exec::get_env(sndr);
+                        else
+                            return empty_env{};
+                    }());
+
+                    struct state
+                    {
+                        func_t _func;
+                        operation_state_handle _op;
+                        env_t _env;
+                    };
+
+                    return state{default_impls::get_state(std::forward<Sndr>(sndr), rcvr), {}, {}};
+                };
+
+            static constexpr auto complete =
+                []<size_t Is, class Tag, class Sndr, class Rcvr, class... Args>
+                (std::integral_constant<size_t, Is> Index, basic_state<Sndr, Rcvr>* op, Tag tag, Args&&... args) noexcept -> void 
+                {
+                    if constexpr(Is == 0 && std::same_as<Tag, CPO>)
+                    {
+                        try 
+                        {
+                            auto& [func, child_op, _] = op->state;
+                            using rcvr_t = basic_receiver<Sndr, Rcvr, std::integral_constant<size_t, 1>>;
+
+                            child_op = operation_state_handle{exec::connect(
+                                func(std::forward<Args>(args)...),
+                                rcvr_t{op})};
+                            exec::start(child_op);
+                        } catch (...) 
+                        {
+                            exec::set_error(std::move(op->rcvr), std::current_exception());
+                        }
+                    }
+                    else
+                    {
+                        Tag{}(std::move(op->rcvr), std::forward<Args>(args)...);
+                    }
+                };
+                
+            template<class Env, class Func>
+            struct ReturnValue
+            {
+                template<class SetCPO, class ... Args>
+                struct ReturnValueHelper
+                {
+                    using Type = completion_signatures<SetCPO(Args...)>;
+                };
+                
+                template<class ... Args>
+                struct ReturnValueHelper<CPO, Args...>
+                {
+                    using Type = completion_signatures_for<std::invoke_result_t<Func, Args...>, Env>;
+                };
+
+                template<class ... Args>
+                using SetValue = ReturnValueHelper<set_value_t, Args...>::Type;
+
+                template<class Error>
+                using SetError = ReturnValueHelper<set_error_t, Error>::Type;
+
+                using SetStopped = ReturnValueHelper<set_stopped_t>::Type;
+            };
+                
+            static constexpr auto get_completion_signatures = 
+                []<class Env, class Func, class ... Sigs>(Env&& env, Func& func, Sigs ... child_sigs)
+                {
+                    using TransformedSigs = transform_completion_signatures<
+                            decltype(default_impls::get_completion_signatures(std::forward<Env>(env), func, child_sigs...)),
+                            ReturnValue<Env, Func>>;
+                    
+                    return []<class ... Sig>(completion_signatures<Sig...>)
+                    {
+                        return _munique_remove_empty<mconcat<Sig...>> {};
+                    } (TransformedSigs{});
+                };
+                
+            static constexpr auto get_env = 
+                []<size_t Is>(std::integral_constant<size_t, Is> Index, auto& state, const auto& rcvr) noexcept -> 
+                    decltype(auto) 
+                {
+                    if constexpr( Is == 0 )
+                    {
+                        return default_impls::get_env(Index, state, rcvr);
+                    }
+                    else if constexpr( Is == 1 )
+                    {
+                        return state._env;
+                    }
+                };
+        };
+    }
 
 
 }// namespace vke::exec
