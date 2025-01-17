@@ -458,7 +458,103 @@ namespace vke::exec
                     }
                 };
         };
+    } // namespace _basic
+
+    namespace _bulk
+    {
+        struct bulk_t
+        {
+            using Tag = bulk_t;
+            
+            template<class Shape, class Func>
+            struct CheckValue
+            {
+                template<class ... Args>
+                using SetValue = std::bool_constant<std::invocable<Func, Shape, std::add_lvalue_reference_t<Args>...>>;
+
+                template<class Error>
+                using SetError = std::true_type;
+
+                using SetStopped = std::true_type;
+            };
+
+            template<sender Sndr, std::integral Shape, movable_value Func>
+            constexpr static sender decltype(auto) operator()(Sndr&& sndr, Shape shape, Func&& func) noexcept
+            {
+                static_assert(transform_completion_signatures<
+                    completion_signatures_for<Sndr, env_of_t<Sndr>>, CheckValue<Shape, Func>, and_all>::value,
+                    "The function in bulk sender must be able to accept shape and all the outgoing values ​​of the previous sender");
+
+                return transform_sender(
+                    get_sender_domain(sndr),
+                    _basic::basic_sender{Tag{}, make_decayed_tuple(shape, func), std::forward<Sndr>(sndr)});
+            }
+
+            template<std::integral Shape, movable_value Func>
+            constexpr static decltype(auto) operator()(Shape shape, Func&& func) noexcept
+            {
+                return sender_adaptor_closure{Tag{}, auto(shape), func};
+            }
+        };
+    } // namespace _bulk
+
+    using _bulk::bulk_t;
+
+    inline constexpr bulk_t bulk{};
+
+    namespace _basic
+    {
+        template<>
+        struct impls_for<bulk_t> : default_impls {
+            static constexpr auto complete = 
+                []<class Tag, class Sndr, class Rcvr, class... Args>
+                (auto, basic_operation<Sndr, Rcvr>* op, Tag, Args&&... args) noexcept -> void 
+                {
+                    if constexpr(std::same_as<Tag, exec::set_value_t>)
+                    {
+                        try {
+                            auto& [shape, func] = op->state;
+
+                            for(std::decay_t<decltype(shape)> i = 0; i < shape; i++)
+                            {
+                                func(auto(i), args...);
+                            }
+                            Tag{}(std::move(op->rcvr), std::forward<Args>(args)...);
+                        } catch (...) {
+                            exec::set_error(std::move(op->rcvr), std::current_exception());
+                        }
+                    }
+                    else
+                    {
+                        Tag{}(std::move(op->rcvr), std::forward<Args>(args)...);
+                    }
+                };
+
+            template<class Shape, class Func>
+            struct CheckFuncNothrow
+            {
+                template<class ... Args>
+                using SetValue = std::conditional_t<std::is_nothrow_invocable_v<Func, Shape, 
+                    std::add_lvalue_reference_t<Args>...>, empty_type, set_error_t(std::exception_ptr)>;
+
+                template<class Error>
+                using SetError = empty_type;
+
+                using SetStopped = empty_type;
+            };
+
+            static constexpr auto get_completion_signatures = 
+                []<class Env, class Shape, class Func, class ChildSigs>
+                    (Env&&, std::tuple<Shape, Func> data, ChildSigs&&)
+                    -> _munique_remove_empty<
+                        transform_completion_signatures<ChildSigs, CheckFuncNothrow<Shape, Func>, 
+                        completion_signatures, ChildSigs>>
+                {
+                    return {};
+                };
+        };
     }
+
 
 
 }// namespace vke::exec
