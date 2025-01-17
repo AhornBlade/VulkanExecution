@@ -19,7 +19,7 @@ namespace vke::exec
                     "set_error can only accept 1 argument");
                 static_assert(!(std::same_as<CPO, set_stopped_t> && sizeof...(args) != 0), 
                     "set_stopped cannot accept any arguments");
-                return _basic::basic_sender{Tag{}, std::tuple{std::forward<Args>(args)...} };
+                return _basic::basic_sender{ Tag{}, std::tuple{auto(args)...} };
             }
         };
         
@@ -156,12 +156,12 @@ namespace vke::exec
             constexpr static sender decltype(auto) operator()(Sndr&& sndr, Func&& func) noexcept
             {
                 static_assert(transform_completion_signatures<
-                    completion_signatures_for<Sndr, empty_env>, CheckValue<Func>, and_all>::value,
+                    completion_signatures_for<Sndr, env_of_t<Sndr>>, CheckValue<Func>, and_all>::value,
                     "The function in upon sender must be able to accept all the outgoing values ​​of the previous sender");
 
                 return transform_sender(
                     get_sender_domain(sndr),
-                    _basic::basic_sender{Tag{}, std::forward<Func>(func), std::forward<Sndr>(sndr)});
+                    _basic::basic_sender{Tag{}, auto(func), auto(sndr)});
             }
 
             template<movable_value Func>
@@ -332,16 +332,16 @@ namespace vke::exec
             constexpr static sender decltype(auto) operator()(Sndr&& sndr, Func&& func) noexcept
             {
                 static_assert(transform_completion_signatures<
-                    completion_signatures_for<Sndr, empty_env>, CheckValue<Func>, and_all>::value,
+                    completion_signatures_for<Sndr, env_of_t<Sndr>>, CheckValue<Func>, and_all>::value,
                     "The function in let sender must be able to accept all the outgoing values ​​of the previous sender");
 
                 static_assert(transform_completion_signatures<
-                    completion_signatures_for<Sndr, empty_env>, CheckReturnValue<Func>, and_all>::value,
+                    completion_signatures_for<Sndr, env_of_t<Sndr>>, CheckReturnValue<Func>, and_all>::value,
                     "The function in let sender must return a sender");
 
                 return transform_sender(
                     get_sender_domain(sndr),
-                    _basic::basic_sender{Tag{}, std::forward<Func>(func), std::forward<Sndr>(sndr)});
+                    _basic::basic_sender{Tag{}, auto(func), std::forward<Sndr>(sndr)});
             }
             
             template<movable_value Func>
@@ -366,10 +366,8 @@ namespace vke::exec
         struct impls_for<_let::let_tag_t<CPO>> : default_impls 
         {
             static constexpr auto get_state = 
-                []<class Sndr, class Rcvr>(Sndr&& sndr, Rcvr& rcvr) noexcept -> decltype(auto) 
+                []<class Sndr, class Rcvr>(Sndr&& sndr, Rcvr& rcvr) noexcept
                 {
-                    using func_t = decltype(default_impls::get_state(std::forward<Sndr>(sndr), rcvr));
-
                     using env_t = decltype([&]{
                         if constexpr(requires{ exec::get_env(get_completion_scheduler<CPO>(get_env(sndr))); })
                             return exec::get_env(get_completion_scheduler<CPO>(get_env(sndr)));
@@ -379,14 +377,8 @@ namespace vke::exec
                             return empty_env{};
                     }());
 
-                    struct state
-                    {
-                        func_t _func;
-                        operation_state_handle _op;
-                        env_t _env;
-                    };
-
-                    return state{default_impls::get_state(std::forward<Sndr>(sndr), rcvr), {}, {}};
+                    return std::tuple{ auto(default_impls::get_state(std::forward<Sndr>(sndr), rcvr)), 
+                        operation_state_handle{}, env_t{} };
                 };
 
             static constexpr auto complete =
@@ -462,7 +454,7 @@ namespace vke::exec
                     }
                     else if constexpr( Is == 1 )
                     {
-                        return state._env;
+                        return std::get<2>(state);
                     }
                 };
         };

@@ -56,7 +56,7 @@ namespace vke::exec
             template<class Sndr>
             constexpr static sender auto operator()(auto _domain, Sndr&& sndr, const auto& ... envs)
             {
-                sender auto transformed_sndr = [&]()
+                sender auto&& transformed_sndr = [&]()
                 {
                     if constexpr(requires{_domain.transform_sender(std::forward<Sndr>(sndr), envs...);})
                     {
@@ -72,11 +72,11 @@ namespace vke::exec
 
                 if constexpr(std::same_as<std::remove_cvref_t<Sndr>, std::remove_cvref_t<decltype(transformed_sndr)>>)
                 {
-                    return transformed_sndr;
+                    return std::forward<decltype(transformed_sndr)>(transformed_sndr);
                 }
                 else
                 {
-                    return transform_sender_t{}(_domain, transformed_sndr, envs...);
+                    return transform_sender_t{}(_domain, std::forward<decltype(transformed_sndr)>(transformed_sndr), envs...);
                 }
             }
         };

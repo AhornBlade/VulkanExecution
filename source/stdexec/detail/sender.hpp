@@ -47,17 +47,20 @@ namespace vke::exec
             template<sender Sndr, receiver Rcvr>
             constexpr static operation_state decltype(auto) operator()(Sndr&& sndr, Rcvr&& rcvr)
             {
-                sender auto new_sndr = transform_sender(decltype(get_sender_domain(sndr, get_env(rcvr))){}, sndr, get_env(rcvr));
+                sender auto&& new_sndr = transform_sender(
+                    decltype(get_sender_domain(std::forward<Sndr>(sndr), get_env(rcvr))){}, sndr, get_env(rcvr));
 
-                if constexpr(requires{ new_sndr.connect(rcvr); })
+                using NewSndr = decltype(new_sndr);
+
+                if constexpr(requires{ std::forward<NewSndr>(new_sndr).connect(std::forward<Rcvr>(rcvr)); })
                 {
-                    static_assert(requires{ {new_sndr.connect(rcvr)} -> operation_state; },
+                    static_assert(requires{ {std::forward<NewSndr>(new_sndr).connect(std::forward<Rcvr>(rcvr))} -> operation_state; },
                         "Customizations of connect must return an operation_state.");
-                    return new_sndr.connect(rcvr);
+                    return std::forward<NewSndr>(new_sndr).connect(std::forward<Rcvr>(rcvr));
                 }
-                else if constexpr(requires{connect_awaitable(new_sndr, rcvr);})
+                else if constexpr(requires{connect_awaitable(std::forward<NewSndr>, std::forward<Rcvr>(rcvr));})
                 {
-                    return connect_awaitable(new_sndr, rcvr);
+                    return connect_awaitable(std::forward<NewSndr>, std::forward<Rcvr>(rcvr));
                 }
                 else
                 {

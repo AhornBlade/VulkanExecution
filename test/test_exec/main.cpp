@@ -46,12 +46,18 @@ int main()
 {
     auto func1 = [](int i) noexcept
     {
-        return 42;
+        return i + 42;
     };
 
     auto func2 = [](auto&& e)
     {
         return just(e + 42);
+    };
+
+    auto func3 = [](int shape, int& i)
+    {
+        std::cout << shape << ' ' << i << '\n';
+        i++;
     };
 
     thread_pool pool1{1};
@@ -61,13 +67,19 @@ int main()
 
     sender auto sndr1 = 
         // schedule(pool1.get_scheduler()) |
-        just(1) | 
+        just(1)  | 
+        //then(func1) |
+        let(func2) | 
         then(func1) |
-        let(func2);
+        then(func1)/* |
+        bulk(10, func3)*/;
 
-    auto op = connect(sndr1, test_receiver{});
+    operation_state auto op = connect(sndr1, test_receiver{});
+
 
     start(op);
+
+    static_assert(std::move_constructible<operation_state_handle>);
 
     // using Tag = completion_signatures_for<decltype(sndr0), empty_env>;
     using Tag1 = completion_signatures_for<decltype(sndr1), empty_env>;

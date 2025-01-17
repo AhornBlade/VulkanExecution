@@ -8,14 +8,6 @@ namespace vke::exec
 {
     namespace _basic
     {
-        struct get_data {
-            template <class _Data>
-            _Data&& operator()(auto, _Data&& _data, auto&&...) const noexcept 
-            {
-                return static_cast<_Data&&>(_data);
-            }
-        };
-
         template<class Tag>
         struct impls_for;
 
@@ -190,7 +182,7 @@ namespace vke::exec
                 };
             static constexpr auto get_state = 
                 []<class Sndr, class Rcvr>(Sndr&& sndr, Rcvr& rcvr) noexcept -> decltype(auto) {
-                    return std::apply(get_data{}, std::forward<Sndr>(sndr)._tuple);
+                    return auto(std::get<1>(std::forward<Sndr>(sndr)._tuple));
                 };
             static constexpr auto start = 
                 [](auto&, auto&, auto&... ops) noexcept -> void {
@@ -222,7 +214,7 @@ namespace vke::exec
                     -> decltype(auto) 
                 {
                     return std::apply(
-                    [&]<class ... Child>(auto&, auto& data, Child& ... child)
+                    [&]<class ... Child>(auto, auto&& data, Child&& ... child)
                     {
                         return std::tuple{exec::connect(
                             std::forward<Child>(child),

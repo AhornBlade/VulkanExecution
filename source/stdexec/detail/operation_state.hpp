@@ -1,6 +1,8 @@
 #pragma once
 
-#include <memory>
+#include "concepts.hpp"
+
+#include <functional>
 
 namespace vke::exec
 {
@@ -31,50 +33,34 @@ namespace vke::exec
         requires (O& o) 
         {
             { start(o) } noexcept;
-        };
+        } &&
+        std::movable<std::remove_cvref_t<O>>;
 
     namespace _operation_state_handle
     {
-        struct operation_state_base
-        {
-            operation_state_base() = default;
-            virtual ~operation_state_base() noexcept = default;
-
-            virtual void start() & noexcept = 0;
-        };
-
-        template<class Op>
-        struct operation_state_impl : operation_state_base
-        {
-            operation_state_impl(Op&& op) : _op{std::move(op)} {}
-
-            virtual void start() & noexcept
-            {
-                _op.start();
-            }
-
-            Op _op;
-        };
-
         struct operation_state_handle
         {
+            using operation_state_concept = operation_state_t;
+
             operation_state_handle() = default;
+            ~operation_state_handle() = default;
+            operation_state_handle(operation_state_handle&& other) noexcept = default;
+            operation_state_handle& operator=(operation_state_handle&& other) noexcept = default;
+            operation_state_handle(const operation_state_handle&) = delete;
+            operation_state_handle& operator=(const operation_state_handle&) = delete;
 
-            template<operation_state Op>
-            operation_state_handle(Op&& op) : _handle{ new operation_state_impl<std::decay_t<Op>>(std::move(op)) } {}
-            
-            template<operation_state Op>
-            operation_state_handle(Op& op) = delete;
+            template<class Op>
+            operation_state_handle(Op&& op) 
+                requires (!std::is_lvalue_reference_v<Op>) &&
+                    (!std::same_as<std::remove_cvref_t<Op>, operation_state_handle>)
+                : _func{ [op = std::forward<Op>(op)] mutable 
+                { 
+                    static_assert(std::move_constructible<Op>);
+                    op.start(); 
+                } } { }
 
-            operation_state_handle(operation_state_handle&&) noexcept = default;
-            operation_state_handle& operator=(operation_state_handle&&) noexcept = default;
-
-            void start() & noexcept
-            {
-                _handle->start();
-            }
-
-            std::unique_ptr<operation_state_base> _handle;
+            inline void start() & noexcept { if(_func) _func(); }
+            std::move_only_function<void()> _func = nullptr;
         };
     } // namespace _operation_state_handle
 
