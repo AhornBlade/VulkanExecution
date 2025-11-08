@@ -23,3 +23,8 @@ if (glm_FOUND)
 else()
     add_subdirectory(glm)
 endif()
+
+#stdexec
+add_library(stdexec INTERFACE)
+target_include_directories(stdexec
+	INTERFACE std-execution)
