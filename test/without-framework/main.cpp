@@ -329,9 +329,9 @@ private:
     }
 
     void createInstance() {
-        // if (enableValidationLayers && !checkValidationLayerSupport()) {
-        //     throw std::runtime_error("validation layers requested, but not available!");
-        // }
+         if (enableValidationLayers && !checkValidationLayerSupport()) {
+             throw std::runtime_error("validation layers requested, but not available!");
+         }
 
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -1434,26 +1434,26 @@ private:
         return extensions;
     }
 
-    // bool checkValidationLayerSupport() {
-    //     std::vector<vk::LayerProperties> availableLayers = vk::enumerateInstanceLayerProperties();
+     bool checkValidationLayerSupport() {
+         std::vector<vk::LayerProperties> availableLayers = context.enumerateInstanceLayerProperties();
 
-    //     for (const char* layerName : validationLayers) {
-    //         bool layerFound = false;
+         for (const char* layerName : validationLayers) {
+             bool layerFound = false;
 
-    //         for (const auto& layerProperties : availableLayers) {
-    //             if (strcmp(layerName, layerProperties.layerName) == 0) {
-    //                 layerFound = true;
-    //                 break;
-    //             }
-    //         }
+             for (const auto& layerProperties : availableLayers) {
+                 if (strcmp(layerName, layerProperties.layerName) == 0) {
+                     layerFound = true;
+                     break;
+                 }
+             }
 
-    //         if (!layerFound) {
-    //             return false;
-    //         }
-    //     }
+             if (!layerFound) {
+                 return false;
+             }
+         }
 
-    //     return true;
-    // }
+         return true;
+     }
 
     static std::vector<char> readFile(const std::string& filename) {
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
