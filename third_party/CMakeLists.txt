@@ -25,6 +25,12 @@ else()
 endif()
 
 #stdexec
-add_library(stdexec INTERFACE)
-target_include_directories(stdexec
-	INTERFACE std-execution)
+add_subdirectory(std-execution)
+
+#tinyobjloader
+add_subdirectory(tinyobjloader)
+
+#stb
+add_library(stb INTERFACE)
+target_include_directories(stb
+	INTERFACE stb)
