@@ -1,5 +1,5 @@
 {
-  "compile_flags": [
+  "CompileFlags": [
     "-std=c++23"
   ]
 }

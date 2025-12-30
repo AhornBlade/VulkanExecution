@@ -7,7 +7,7 @@
 namespace vke{
 
     Buffer::Buffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
-        const CreateInfo& createInfo_, DeviceMemoryAllocatorBase& deviceMemoryAllocator)
+        const CreateInfo& createInfo_, DeviceMemoryAllocator<>& deviceMemoryAllocator)
     {
         vk::BufferCreateInfo createInfo{};
 
@@ -30,7 +30,7 @@ namespace vke{
         memory->bind(buffer);
     }
 
-    Buffer::Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocatorBase& deviceMemoryAllocator)
+    Buffer::Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocator<>& deviceMemoryAllocator)
         : Buffer{ device, device.getPhysicalDevice(), createInfo, deviceMemoryAllocator } {}
     
     Swapchain::Swapchain(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, CreateInfo&& createInfo_, vk::SwapchainKHR oldSwapchain)
@@ -87,17 +87,17 @@ namespace vke{
     }
     
     Image::Image(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
-        CreateInfo&& createInfo_, DeviceMemoryAllocatorBase& deviceMemoryAllocator)
+        CreateInfo&& createInfo_, DeviceMemoryAllocator<>& deviceMemoryAllocator)
         : createInfo{ std::move(createInfo_) }, image{ createImage(device, physicalDevice) }, 
         memory{ deviceMemoryAllocator.allocateMemory(image.getMemoryRequirements()) }
     {
         memory->bind(image);
     }
 
-    Image::Image(const Device& device, CreateInfo&& createInfo, DeviceMemoryAllocatorBase& deviceMemoryAllocator)
+    Image::Image(const Device& device, CreateInfo&& createInfo, DeviceMemoryAllocator<>& deviceMemoryAllocator)
         : Image{device, device.getPhysicalDevice(), std::move(createInfo), deviceMemoryAllocator} { }
         
-    void Image::recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryAllocatorBase& deviceMemoryAllocator)
+    void Image::recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryAllocator<>& deviceMemoryAllocator)
     {
         image = createImage(device, physicalDevice);
         memory = deviceMemoryAllocator.allocateMemory(image.getMemoryRequirements());
@@ -105,7 +105,7 @@ namespace vke{
         memory->bind(image);
     }
 
-    void Image::recreate(const Device& device, DeviceMemoryAllocatorBase& deviceMemoryAllocator)
+    void Image::recreate(const Device& device, DeviceMemoryAllocator<>& deviceMemoryAllocator)
     {
         recreate(device, device.getPhysicalDevice(), deviceMemoryAllocator );
     }

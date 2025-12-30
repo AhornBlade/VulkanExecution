@@ -144,10 +144,7 @@ private:
     const vke::DeviceQueue& presentQueue = device.getDeviceQueue(
         [](const vke::DeviceQueueInfo& queue) { return queue.queueUsageFlags | QueueUsageFlagBits::ePresent; });
 
-    vke::DefaultDeviceMemoryAllocator deviceLocalMemoryAllocator{device, [](vk::MemoryPropertyFlags flags, vk::MemoryHeap) -> bool
-    {
-        return static_cast<bool>(flags & vk::MemoryPropertyFlagBits::eDeviceLocal);
-    }};   
+    vke::DeviceMemoryAllocator<vke::DefaultDeviceMemoryStrategy> deviceLocalMemoryAllocator{ vke::DefaultDeviceMemoryStrategy{device} };   
     
     vke::Swapchain swapchain{device, vke::Swapchain::CreateInfo{
         .surface = window.getSurface(),
@@ -181,7 +178,9 @@ private:
         .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
     }, deviceLocalMemoryAllocator};
 
-    vke::MappableAllocator<vke::DefaultDeviceMemoryAllocator> mappableAllocator {device.getPhysicalDevice(), device};
+    vke::VisibleDeviceMemoryAllocator<vke::DefaultDeviceMemoryStrategy> visibleMemoryAllocator{ vke::DefaultDeviceMemoryStrategy{device} };
+
+    
 
     void triggerSetFramebufferSize(vk::Extent2D extent)
     {

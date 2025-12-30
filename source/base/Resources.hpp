@@ -16,8 +16,8 @@ namespace vke{
         };
 
         Buffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, const CreateInfo& createInfo, 
-            DeviceMemoryAllocatorBase& deviceMemoryAllocator);
-        Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocatorBase& deviceMemoryAllocator);
+            DeviceMemoryAllocator<>& deviceMemoryAllocator);
+        Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocator<>& deviceMemoryAllocator);
         virtual ~Buffer() noexcept = default;
         
         Buffer(Buffer&&) noexcept = default;
@@ -28,7 +28,7 @@ namespace vke{
         inline const auto* operator->() const & noexcept { return &buffer; }
 
     private:
-        std::unique_ptr<DeviceMemoryBase> memory = nullptr;
+        std::unique_ptr<DeviceMemory<>> memory = nullptr;
         vk::raii::Buffer buffer{ nullptr };
     };
 
@@ -112,8 +112,8 @@ namespace vke{
         };
         
         Image(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, CreateInfo&& createInfo, 
-            DeviceMemoryAllocatorBase& deviceMemoryAllocator);
-        Image(const Device& device, CreateInfo&& createInfo, DeviceMemoryAllocatorBase& deviceMemoryAllocator);
+            DeviceMemoryAllocator<>& deviceMemoryAllocator);
+        Image(const Device& device, CreateInfo&& createInfo, DeviceMemoryAllocator<>& deviceMemoryAllocator);
         virtual ~Image() noexcept = default;
         
         Image(Image&&) noexcept = default;
@@ -146,14 +146,14 @@ namespace vke{
         inline vk::SampleCountFlagBits getSamples() const noexcept { return nativeCreateInfo.samples; }
         inline vk::ImageLayout getInitialLayout() const noexcept { return nativeCreateInfo.initialLayout; }
 
-        void recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryAllocatorBase& deviceMemoryAllocator);
-        void recreate(const Device& device, DeviceMemoryAllocatorBase& deviceMemoryAllocator);
+        void recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryAllocator<>& deviceMemoryAllocator);
+        void recreate(const Device& device, DeviceMemoryAllocator<>& deviceMemoryAllocator);
 
     private:
         vk::ImageCreateInfo nativeCreateInfo{};
         CreateInfo createInfo;
         vk::raii::Image image{ nullptr };
-        std::unique_ptr<DeviceMemoryBase> memory = nullptr;
+        std::unique_ptr<DeviceMemory<>> memory = nullptr;
 
         vk::raii::Image createImage(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice);
     };
