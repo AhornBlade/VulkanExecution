@@ -20,6 +20,12 @@ struct Vertex {
     glm::vec2 texCoord;
 };
 
+struct UniformBufferObject {
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
+};
+
 class HelloTriangleApplication
 {
 public:
@@ -32,12 +38,6 @@ private:
         .enabledExtensionChecker{
             [exts = glfwInstance.getInstanceExtensions()](const vk::ExtensionProperties& p) -> bool
             {
-                if(std::strcmp(VK_EXT_SHADER_OBJECT_EXTENSION_NAME, p.extensionName) == 0)
-                    return true;
-                
-                if(std::strcmp(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, p.extensionName) == 0)
-                    return true;
-
                 return std::ranges::find_if(exts, [&](const char* str){ return std::strcmp(str, p.extensionName) == 0; }) != std::ranges::end(exts);
             }
         }}};
@@ -144,7 +144,9 @@ private:
     const vke::DeviceQueue& presentQueue = device.getDeviceQueue(
         [](const vke::DeviceQueueInfo& queue) { return queue.queueUsageFlags | QueueUsageFlagBits::ePresent; });
 
-    vke::DeviceMemoryAllocator<vke::DefaultDeviceMemoryStrategy> deviceLocalMemoryAllocator{ vke::DefaultDeviceMemoryStrategy{device} };   
+    vke::NewDeleteDeviceMemoryResource memoryResource{device};
+    vke::DeviceLocalMemoryResource deviceLocalMemory{device.getPhysicalDevice(), &memoryResource};
+    vke::MappedDeviceMemoryResource mappedMemory{device.getPhysicalDevice(), &memoryResource};
     
     vke::Swapchain swapchain{device, vke::Swapchain::CreateInfo{
         .surface = window.getSurface(),
@@ -168,7 +170,7 @@ private:
         }},
         .extent{ [this] { return vk::Extent3D{window.getExtent2D(), 1}; } },
         .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
-    }, deviceLocalMemoryAllocator};
+    }, vke::DeviceMemoryAllocator<>{deviceLocalMemory}};
     
     vke::Image textureImage{device, vke::Image::CreateInfo{
         .usage{vk::ImageUsageFlagBits::eSampled},
@@ -176,16 +178,19 @@ private:
         .formatSelecter{ nullptr, std::vector{vk::Format::eR8G8B8A8Srgb} },
         .extent{ [this] { return vk::Extent3D{window.getExtent2D(), 1}; } },
         .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
-    }, deviceLocalMemoryAllocator};
-
-    vke::VisibleDeviceMemoryAllocator<vke::DefaultDeviceMemoryStrategy> visibleMemoryAllocator{ vke::DefaultDeviceMemoryStrategy{device} };
-
+    }, vke::DeviceMemoryAllocator<>{deviceLocalMemory}};
     
+    vke::Buffer uniformBuffer{device, vke::Buffer::CreateInfo{
+        .flags = static_cast<vk::BufferCreateFlags>(0),
+        .size = sizeof(UniformBufferObject),
+        .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+        .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
+    }, vke::DeviceMemoryAllocator<>{mappedMemory}};
 
     void triggerSetFramebufferSize(vk::Extent2D extent)
     {
         swapchain.recreate(device);
-        depthImage.recreate(device, deviceLocalMemoryAllocator);
+        depthImage.recreate(device);
     }
 };
 

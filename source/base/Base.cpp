@@ -39,12 +39,15 @@ namespace vke{
 			layers.emplace_back("VK_LAYER_KHRONOS_validation");
 #endif
 
+            // extensions.emplace_back(VK_EXT_SHADER_OBJECT_EXTENSION_NAME);
+            // extensions.emplace_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+
 			vk::ApplicationInfo appInfo{};
 			appInfo.setPApplicationName(createInfo_.applicationName);
 			appInfo.setApplicationVersion(createInfo_.applicationVersion);
 			appInfo.setPEngineName("VulkanExecution");
 			appInfo.setEngineVersion(VK_MAKE_VERSION(0, 0, 1));
-			appInfo.setApiVersion(vk::ApiVersion);
+			appInfo.setApiVersion(vk::ApiVersion12);
 
 			instance = vk::raii::Instance{ context, vk::InstanceCreateInfo{}
 				.setPEnabledExtensionNames(extensions)
@@ -109,6 +112,8 @@ namespace vke{
         auto enabledExtensions = std::ranges::to<std::vector<const char*>>(extensionProperties
             | std::ranges::views::filter(createInfo_.enabledExtensionChecker)
             | std::ranges::views::transform([](const vk::ExtensionProperties& p) -> const char*{ return p.extensionName; }));
+
+        enabledExtensions.emplace_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 
         auto enabledFeatures = createInfo_.enabledFeaturesTransformer(physicalDevice.getFeatures());
 

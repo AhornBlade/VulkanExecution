@@ -7,7 +7,8 @@
 namespace vke{
 
     Buffer::Buffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
-        const CreateInfo& createInfo_, DeviceMemoryAllocator<>& deviceMemoryAllocator)
+        const CreateInfo& createInfo_, DeviceMemoryAllocator<> deviceMemoryAllocator)
+        : allocator_(deviceMemoryAllocator)
     {
         vk::BufferCreateInfo createInfo{};
 
@@ -25,13 +26,20 @@ namespace vke{
 
         buffer = vk::raii::Buffer{ device, createInfo};
 
-        memory = deviceMemoryAllocator.allocateMemory(buffer.getMemoryRequirements());
-
-        memory->bind(buffer);
+        memory_ = deviceMemoryAllocator.allocate_bytes(device, physicalDevice, buffer.getMemoryRequirements());
+        buffer.bindMemory(*memory_.memory, memory_.offset);
     }
 
-    Buffer::Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocator<>& deviceMemoryAllocator)
+    Buffer::Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocator<> deviceMemoryAllocator)
         : Buffer{ device, device.getPhysicalDevice(), createInfo, deviceMemoryAllocator } {}
+
+    Buffer::~Buffer() noexcept
+    {
+        if(allocator_)
+        {
+            allocator_.deallocate_bytes(memory_, buffer.getMemoryRequirements());
+        }
+    }
     
     Swapchain::Swapchain(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, CreateInfo&& createInfo_, vk::SwapchainKHR oldSwapchain)
         : createInfo{std::move(createInfo_)}, swapchain{createSwapchain(device, physicalDevice, oldSwapchain)}, images{swapchain.getImages()} {}
@@ -87,27 +95,35 @@ namespace vke{
     }
     
     Image::Image(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
-        CreateInfo&& createInfo_, DeviceMemoryAllocator<>& deviceMemoryAllocator)
+        CreateInfo&& createInfo_, DeviceMemoryAllocator<> deviceMemoryAllocator)
         : createInfo{ std::move(createInfo_) }, image{ createImage(device, physicalDevice) }, 
-        memory{ deviceMemoryAllocator.allocateMemory(image.getMemoryRequirements()) }
+        allocator_{ deviceMemoryAllocator },
+        memory_{ deviceMemoryAllocator.allocate_bytes(device, physicalDevice, image.getMemoryRequirements()) }
     {
-        memory->bind(image);
+        image.bindMemory(*memory_.memory, memory_.offset);
     }
 
-    Image::Image(const Device& device, CreateInfo&& createInfo, DeviceMemoryAllocator<>& deviceMemoryAllocator)
+    Image::Image(const Device& device, CreateInfo&& createInfo, DeviceMemoryAllocator<> deviceMemoryAllocator)
         : Image{device, device.getPhysicalDevice(), std::move(createInfo), deviceMemoryAllocator} { }
         
-    void Image::recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryAllocator<>& deviceMemoryAllocator)
+    Image::~Image() noexcept
+    {
+        if(allocator_)
+        {
+            allocator_.deallocate_bytes(memory_, image.getMemoryRequirements());
+        }
+    }
+        
+    void Image::recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice)
     {
         image = createImage(device, physicalDevice);
-        memory = deviceMemoryAllocator.allocateMemory(image.getMemoryRequirements());
-        
-        memory->bind(image);
+        memory_ = allocator_.allocate_bytes(device, physicalDevice, image.getMemoryRequirements());
+        image.bindMemory(*memory_.memory, memory_.offset);
     }
 
-    void Image::recreate(const Device& device, DeviceMemoryAllocator<>& deviceMemoryAllocator)
+    void Image::recreate(const Device& device)
     {
-        recreate(device, device.getPhysicalDevice(), deviceMemoryAllocator );
+        recreate(device, device.getPhysicalDevice());
     }
         
     vk::raii::Image Image::createImage(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice)
@@ -212,32 +228,4 @@ namespace vke{
 
         return vk::raii::ImageView{device, viewCreateInfo};
     }
-    
-    // Framebuffer::Framebuffer(const vk::raii::Device& device, CreateInfo&& createInfo_)
-    //     : createInfo{ std::move(createInfo_) }, imageViews{ createInfo.attachments() }, framebuffer{ createFrameBuffer(device) } {}
-    
-    // void Framebuffer::recreate(const vk::raii::Device& device)
-    // {
-    //     imageViews = createInfo.attachments();
-    //     framebuffer = createFrameBuffer(device);
-    // }
-    
-    // vk::raii::Framebuffer Framebuffer::createFrameBuffer(const vk::raii::Device& device)
-    // {
-    //     std::vector<vk::ImageView> views = std::ranges::to<std::vector>(imageViews 
-    //         | std::ranges::views::transform([](const vk::raii::ImageView& v)-> vk::ImageView { return v; }) );
-
-    //     vk::Extent2D extent = createInfo.extent();
-
-    //     vk::FramebufferCreateInfo nativeCreateInfo{};
-
-    //     nativeCreateInfo.setFlags(createInfo.flags());
-    //     nativeCreateInfo.setRenderPass(createInfo.renderPass());
-    //     nativeCreateInfo.setAttachments(views);
-    //     nativeCreateInfo.setWidth(extent.width);
-    //     nativeCreateInfo.setHeight(extent.height);
-    //     nativeCreateInfo.setLayers(createInfo.layers());
-
-    //     return vk::raii::Framebuffer{device, nativeCreateInfo};
-    // }
 }
