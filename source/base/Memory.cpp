@@ -5,7 +5,7 @@
 namespace vke{
     DeviceMemoryResource* default_device_memory_res = nullptr;
 
-    DeviceMemoryInfo<void> DeviceMemoryResource::allocate(vk::MemoryRequirements requirements)
+    DeviceMemoryInfo DeviceMemoryResource::allocate(vk::MemoryRequirements requirements)
     {
         if(!std::has_single_bit(requirements.alignment))
         {
@@ -14,16 +14,12 @@ namespace vke{
         return do_allocate(requirements);
     }
 
-    void DeviceMemoryResource::deallocate(DeviceMemoryInfo<void> memory, vk::MemoryRequirements requirements)
+    void DeviceMemoryResource::deallocate(DeviceMemoryInfo memory)
     {
         if( !memory.memory )
             return;
 
-        if(!std::has_single_bit(requirements.alignment))
-        {
-            throw std::runtime_error{"DeviceMemoryResource::allocate alignment must be a power of two"};
-        }
-        do_deallocate(memory, requirements);
+        do_deallocate(memory);
     }
 
     bool DeviceMemoryResource::is_equal(const DeviceMemoryResource& other) const noexcept
@@ -31,31 +27,15 @@ namespace vke{
         return do_is_equal(other);
     }
 
-    NewDeleteDeviceMemoryResource::NewDeleteDeviceMemoryResource(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
-        std::function<bool(vk::MemoryPropertyFlags property, vk::MemoryHeap heap)> memoryTypeFlilter)
-        : p_device{&device}, physicalDevice_{physicalDevice}
-    {
-        if(memoryTypeFlilter)
-        {
-            auto properties = physicalDevice.getMemoryProperties();
+    NewDeleteDeviceMemoryResource::NewDeleteDeviceMemoryResource(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice)
+        : p_device{&device}, physicalDevice_{physicalDevice} {}
 
-            memoryTypes = std::ranges::fold_left(std::ranges::views::iota(0u, properties.memoryTypeCount) 
-                | std::ranges::views::filter([&](uint32_t index) -> bool
-                    { 
-                        auto& memoryType = properties.memoryTypes[index];
-                        return memoryTypeFlilter(memoryType.propertyFlags, properties.memoryHeaps[memoryType.heapIndex]) ;
-                    })
-                | std::ranges::views::transform([](uint32_t index) -> uint32_t { return 1u << index; }), 0u, std::bit_or{});
-        }
-    }
-
-    NewDeleteDeviceMemoryResource::NewDeleteDeviceMemoryResource(const Device& device, 
-        std::function<bool(vk::MemoryPropertyFlags property, vk::MemoryHeap heap)> memoryTypeFlilter)
-        : NewDeleteDeviceMemoryResource{device, device.getPhysicalDevice(), memoryTypeFlilter} {}
+    NewDeleteDeviceMemoryResource::NewDeleteDeviceMemoryResource(const Device& device)
+        : NewDeleteDeviceMemoryResource{device, device.getPhysicalDevice()} {}
     
-    DeviceMemoryInfo<void> NewDeleteDeviceMemoryResource::do_allocate(vk::MemoryRequirements requirements)
+    DeviceMemoryInfo NewDeleteDeviceMemoryResource::do_allocate(vk::MemoryRequirements requirements)
     {
-        uint32_t memoryTypeIndices = requirements.memoryTypeBits & memoryTypes;
+        uint32_t memoryTypeIndices = requirements.memoryTypeBits;
 
         if(memoryTypeIndices == 0)
         {
@@ -71,10 +51,10 @@ namespace vke{
                         (budget.heapBudget[properties.memoryProperties.memoryTypes[index].heapIndex] >= requirements.size);
                 })).front();
 
-        return DeviceMemoryInfo<void>{ new vk::raii::DeviceMemory{*p_device, vk::MemoryAllocateInfo{requirements.size, index}}, index };
+        return DeviceMemoryInfo{ new vk::raii::DeviceMemory{*p_device, vk::MemoryAllocateInfo{requirements.size, index}}, index, 0, requirements.size };
     }
 
-    void NewDeleteDeviceMemoryResource::do_deallocate(DeviceMemoryInfo<void> memory, vk::MemoryRequirements requirements)
+    void NewDeleteDeviceMemoryResource::do_deallocate(DeviceMemoryInfo memory)
     {
         delete memory.memory;
     }
@@ -85,23 +65,32 @@ namespace vke{
         return p_other && (physicalDevice_ == p_other->physicalDevice_);
     }
     
-    DeviceLocalMemoryResource::DeviceLocalMemoryResource(const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryResource* upstream)
+    FilterDeviceMemoryResource::FilterDeviceMemoryResource(const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryResource* upstream,
+            std::function<bool(vk::MemoryPropertyFlags property, vk::MemoryHeap heap)> memoryTypeFlilter)
         : p_resource{upstream}
     {
-        auto properties = physicalDevice.getMemoryProperties();
-
-        for(uint32_t index = 0; index < properties.memoryTypeCount; index++)
+        if(memoryTypeFlilter)
         {
-            if(properties.memoryTypes[index].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)
-            {
-                deviceLocalIndices |= (1u << index);
-            }
+            auto properties = physicalDevice.getMemoryProperties();
+
+            validIndices = std::ranges::fold_left(std::ranges::views::iota(0u, properties.memoryTypeCount) 
+                | std::ranges::views::filter([&](uint32_t index) -> bool
+                    { 
+                        auto& memoryType = properties.memoryTypes[index];
+                        return memoryTypeFlilter(memoryType.propertyFlags, properties.memoryHeaps[memoryType.heapIndex]) ;
+                    })
+                | std::ranges::views::transform([](uint32_t index) -> uint32_t { return 1u << index; }), 0u, std::bit_or{});
         }
     }
     
-    DeviceMemoryInfo<void> DeviceLocalMemoryResource::do_allocate(vk::MemoryRequirements requirements)
+    FilterDeviceMemoryResource::FilterDeviceMemoryResource(const vk::raii::PhysicalDevice& physicalDevice, 
+        DeviceMemoryResource* upstream, vk::MemoryPropertyFlags required)
+        : FilterDeviceMemoryResource{ physicalDevice, upstream, 
+            [required](vk::MemoryPropertyFlags property, vk::MemoryHeap heap) -> bool { return (property & required) == required; } } {}
+    
+    DeviceMemoryInfo FilterDeviceMemoryResource::do_allocate(vk::MemoryRequirements requirements)
     {
-        uint32_t indices = requirements.memoryTypeBits & deviceLocalIndices;
+        uint32_t indices = requirements.memoryTypeBits & validIndices;
 
         if(indices == 0)
         {
@@ -111,14 +100,14 @@ namespace vke{
         return p_resource->allocate(vk::MemoryRequirements{requirements.size, requirements.alignment, indices});
     }
 
-    void DeviceLocalMemoryResource::do_deallocate(DeviceMemoryInfo<void> memory, vk::MemoryRequirements requirements)
+    void FilterDeviceMemoryResource::do_deallocate(DeviceMemoryInfo memory)
     {
-        p_resource->deallocate(memory, requirements);
+        p_resource->deallocate(memory);
     }
 
-    bool DeviceLocalMemoryResource::do_is_equal(const DeviceMemoryResource& other) const noexcept
+    bool FilterDeviceMemoryResource::do_is_equal(const DeviceMemoryResource& other) const noexcept
     {
-        const DeviceLocalMemoryResource* p_other = dynamic_cast<const DeviceLocalMemoryResource*>(&other);
+        const FilterDeviceMemoryResource* p_other = dynamic_cast<const FilterDeviceMemoryResource*>(&other);
         return p_other && (p_resource == p_other->p_resource);
     }
     
@@ -141,7 +130,7 @@ namespace vke{
         }
     }
     
-    DeviceMemoryInfo<void> MappedDeviceMemoryResource::do_allocate(vk::MemoryRequirements requirements)
+    DeviceMemoryInfo MappedDeviceMemoryResource::do_allocate(vk::MemoryRequirements requirements)
     {
         uint32_t indices = requirements.memoryTypeBits & visibleIndices;
 
@@ -150,7 +139,7 @@ namespace vke{
             throw std::runtime_error{"MappedDeviceMemoryResource::do_allocate, Failed to find valid memory type"};
         }
 
-        DeviceMemoryInfo<void> p = p_resource->allocate(vk::MemoryRequirements{requirements.size, requirements.alignment, indices});
+        DeviceMemoryInfo p = p_resource->allocate(vk::MemoryRequirements{requirements.size, requirements.alignment, indices});
         p.mapped = p.memory->mapMemory(0, requirements.size);
 
         if( (coherentIndices & ( 1u << p.memoryIndex )) == 0 )
@@ -167,11 +156,11 @@ namespace vke{
         return p;
     }
 
-    void MappedDeviceMemoryResource::do_deallocate(DeviceMemoryInfo<void> memory, vk::MemoryRequirements requirements)
+    void MappedDeviceMemoryResource::do_deallocate(DeviceMemoryInfo memory)
     {
         if( (coherentIndices & ( 1u << memory.memoryIndex )) == 0 )
         {
-            vk::MappedMemoryRange range{*memory.memory, memory.offset, requirements.size};
+            vk::MappedMemoryRange range{*memory.memory, memory.offset, memory.size};
 
             VULKAN_HPP_ASSERT( memory.memory->getDispatcher()->vkFlushMappedMemoryRanges && "Function <vkFlushMappedMemoryRanges> requires <VK_VERSION_1_0>" );
 
@@ -180,7 +169,7 @@ namespace vke{
             vk::detail::resultCheck( result, "vke::MappedDeviceMemoryResource::do_allocate" );
         }
 
-        p_resource->deallocate(memory, requirements);
+        p_resource->deallocate(memory);
     }
 
     bool MappedDeviceMemoryResource::do_is_equal(const DeviceMemoryResource& other) const noexcept
@@ -189,21 +178,59 @@ namespace vke{
         return p_other && (p_resource == p_other->p_resource);
     }
 
-    DeviceMemoryInfo<void> DeviceMemoryAllocator<void>::allocate_bytes(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
-        vk::MemoryRequirements requirements)
+    
+    QueueTransferMemoryResource::QueueTransferMemoryResource(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
+        DeviceMemoryResource* deviceLocalUpstream, DeviceMemoryResource* stagingUpstream)
+        : p_device{&device},
+            deviceLocal(physicalDevice, deviceLocalUpstream, vk::MemoryPropertyFlagBits::eDeviceLocal), 
+            coherent(physicalDevice, stagingUpstream, vk::MemoryPropertyFlagBits::eHostCoherent),
+            staging(physicalDevice, &coherent) {}
+    
+    QueueTransferMemoryResource::QueueTransferMemoryResource(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, 
+        DeviceMemoryResource* upstream)
+        : QueueTransferMemoryResource{device, physicalDevice, upstream, upstream} {}
+
+    QueueTransferMemoryResource::QueueTransferMemoryResource(const Device& device, DeviceMemoryResource* deviceLocalUpstream, DeviceMemoryResource* stagingUpstream)
+        : QueueTransferMemoryResource{device, device.getPhysicalDevice(), deviceLocalUpstream, stagingUpstream } {}
+
+    QueueTransferMemoryResource::QueueTransferMemoryResource(const Device& device, DeviceMemoryResource* upstream) 
+        : QueueTransferMemoryResource{ device, device.getPhysicalDevice(), upstream } {}
+        
+    void QueueTransferMemoryResource::cmdUpload(const vk::raii::CommandBuffer& commandBuffer) const
     {
-        if(!p_resource)
+        for(auto& [_, info] : map)
         {
-            p_resource = getDefaultDeviceMemoryResource(device, physicalDevice);
+            commandBuffer.copyBuffer(info.staging, info.deviceLocal, {0, 0, info.memory.size});
         }
-        return p_resource->allocate(requirements);
+    }
+    
+    DeviceMemoryInfo QueueTransferMemoryResource::do_allocate(vk::MemoryRequirements requirements)
+    {
+        DeviceMemoryInfo deviceLocalMemory = deviceLocal.allocate(requirements);
+        DeviceMemoryInfo stagingMemory = staging.allocate(requirements);
+
+        vk::BufferCreateInfo createInfo{{}, requirements.size, vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst};
+
+        deviceLocalMemory.mapped = stagingMemory.mapped;
+        map[deviceLocalMemory.mapped] = {stagingMemory, vk::raii::Buffer{*p_device, createInfo}, vk::raii::Buffer{*p_device, createInfo} };
+
+        return deviceLocalMemory;
     }
 
-    void DeviceMemoryAllocator<void>::deallocate_bytes(DeviceMemoryInfo<void> memory, vk::MemoryRequirements requirements)
+    void QueueTransferMemoryResource::do_deallocate(DeviceMemoryInfo memory)
     {
-        if(!p_resource)
-            return;
-        p_resource->deallocate(memory, requirements);
+        if(auto it = map.find(memory.mapped); it != map.end() )
+        {
+            staging.deallocate(it->second.memory);
+            map.erase(it);
+        }
+        memory.mapped = nullptr;
+        deviceLocal.deallocate(memory);
+    }
+
+    bool QueueTransferMemoryResource::do_is_equal(const DeviceMemoryResource& other) const noexcept
+    {
+        return this == &other;
     }
     
     DeviceMemoryResource* getDefaultDeviceMemoryResource(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice)

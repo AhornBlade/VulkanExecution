@@ -145,8 +145,9 @@ private:
         [](const vke::DeviceQueueInfo& queue) { return queue.queueUsageFlags | QueueUsageFlagBits::ePresent; });
 
     vke::NewDeleteDeviceMemoryResource memoryResource{device};
-    vke::DeviceLocalMemoryResource deviceLocalMemory{device.getPhysicalDevice(), &memoryResource};
+    vke::FilterDeviceMemoryResource deviceLocalMemory{device.getPhysicalDevice(), &memoryResource, vk::MemoryPropertyFlagBits::eDeviceLocal};
     vke::MappedDeviceMemoryResource mappedMemory{device.getPhysicalDevice(), &memoryResource};
+    vke::QueueTransferMemoryResource transferMemory{device, &memoryResource};
     
     vke::Swapchain swapchain{device, vke::Swapchain::CreateInfo{
         .surface = window.getSurface(),
@@ -170,7 +171,7 @@ private:
         }},
         .extent{ [this] { return vk::Extent3D{window.getExtent2D(), 1}; } },
         .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
-    }, vke::DeviceMemoryAllocator<>{deviceLocalMemory}};
+    }, deviceLocalMemory};
     
     vke::Image textureImage{device, vke::Image::CreateInfo{
         .usage{vk::ImageUsageFlagBits::eSampled},
@@ -178,19 +179,33 @@ private:
         .formatSelecter{ nullptr, std::vector{vk::Format::eR8G8B8A8Srgb} },
         .extent{ [this] { return vk::Extent3D{window.getExtent2D(), 1}; } },
         .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
-    }, vke::DeviceMemoryAllocator<>{deviceLocalMemory}};
+    }, deviceLocalMemory};
     
-    vke::Buffer uniformBuffer{device, vke::Buffer::CreateInfo{
+    vke::Buffer<Vertex> vertexBuffer{device, vke::Buffer<Vertex>::CreateInfo{
         .flags = static_cast<vk::BufferCreateFlags>(0),
-        .size = sizeof(UniformBufferObject),
+        .data = std::vector<Vertex>(10),
+        .usage = vk::BufferUsageFlagBits::eVertexBuffer,
+        .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
+    }, transferMemory};
+    
+    vke::Buffer<uint32_t> indexBuffer{device, vke::Buffer<uint32_t>::CreateInfo{
+        .flags = static_cast<vk::BufferCreateFlags>(0),
+        .data = std::vector<uint32_t>(10),
+        .usage = vk::BufferUsageFlagBits::eIndexBuffer,
+        .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
+    }, transferMemory};
+    
+    vke::Buffer<UniformBufferObject> uniformBuffer{device, vke::Buffer<UniformBufferObject>::CreateInfo{
+        .flags = static_cast<vk::BufferCreateFlags>(0),
+        .data = std::vector<UniformBufferObject>(1),
         .usage = vk::BufferUsageFlagBits::eUniformBuffer,
         .queueFamilyIndices{ std::vector<uint32_t>{graphicsQueue.getQueueFamilyIndex()} }
-    }, vke::DeviceMemoryAllocator<>{mappedMemory}};
+    }, mappedMemory};
 
     void triggerSetFramebufferSize(vk::Extent2D extent)
     {
         swapchain.recreate(device);
-        depthImage.recreate(device);
+        depthImage.recreate(device, deviceLocalMemory);
     }
 };
 

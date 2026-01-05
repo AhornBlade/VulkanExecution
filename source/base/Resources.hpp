@@ -4,35 +4,6 @@
 #include "Memory.hpp"
 
 namespace vke{
-    class Buffer
-    {
-    public:
-        struct CreateInfo
-        {
-            Getter<vk::BufferCreateFlags> flags{ static_cast<vk::BufferCreateFlags>(0) };
-            Getter<vk::DeviceSize> size;
-            Getter<vk::BufferUsageFlags> usage;
-            Getter<std::vector<uint32_t>> queueFamilyIndices{std::vector<uint32_t>{}};
-        };
-
-        Buffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, const CreateInfo& createInfo, 
-            DeviceMemoryAllocator<> deviceMemoryAllocator = DeviceMemoryAllocator<>{});
-        Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocator<> deviceMemoryAllocator = DeviceMemoryAllocator<>{});
-        ~Buffer() noexcept;
-        
-        Buffer(Buffer&&) noexcept = default;
-        Buffer& operator=(Buffer&&) noexcept = default;
-
-        inline operator const vk::raii::Buffer & () const & noexcept { return buffer; }
-        inline operator vk::Buffer () const & noexcept { return buffer; }
-        inline const auto* operator->() const & noexcept { return &buffer; }
-
-    private:
-        DeviceMemoryAllocator<> allocator_{};
-        DeviceMemoryInfo<void> memory_{};
-        vk::raii::Buffer buffer{ nullptr };
-    };
-
     class Swapchain
     {
     public:
@@ -94,6 +65,76 @@ namespace vke{
         vk::raii::SwapchainKHR createSwapchain(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, vk::SwapchainKHR oldSwapchain);
     };
 
+    class BufferWrapper
+    {
+    public:
+        struct CreateInfo
+        {
+            Getter<vk::BufferCreateFlags> flags{ static_cast<vk::BufferCreateFlags>(0) };
+            Getter<vk::DeviceSize> size;
+            Getter<vk::BufferUsageFlags> usage;
+            Getter<std::vector<uint32_t>> queueFamilyIndices{std::vector<uint32_t>{}};
+        };
+        explicit BufferWrapper() = default;
+        BufferWrapper(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, const CreateInfo& createInfo);
+        
+        BufferWrapper(BufferWrapper&&) noexcept = default;
+        BufferWrapper& operator=(BufferWrapper&&) noexcept = default;
+
+        vk::raii::Buffer buffer{ nullptr };
+    };
+    
+    template<class T = void>
+    class Buffer
+    {
+    public:
+        struct CreateInfo
+        {
+            Getter<vk::BufferCreateFlags> flags{ static_cast<vk::BufferCreateFlags>(0) };
+            Getter<std::vector<T>> data;
+            Getter<vk::BufferUsageFlags> usage;
+            Getter<std::vector<uint32_t>> queueFamilyIndices{std::vector<uint32_t>{}};
+        };
+        
+        Buffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, const BufferWrapper::CreateInfo& createInfo, 
+            DeviceMemoryAllocator<T> deviceMemoryAllocator = DeviceMemoryAllocator<T>{})
+            : buffer{device, physicalDevice, createInfo}
+        {
+            memory_ = deviceMemoryAllocator.allocate(device, physicalDevice, buffer.buffer.getMemoryRequirements());
+            memory_.bind(buffer);
+        }
+        Buffer(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, const CreateInfo& createInfo, 
+            DeviceMemoryAllocator<T> deviceMemoryAllocator = DeviceMemoryAllocator<T>{})
+        {
+            auto data = createInfo.data();
+            buffer = BufferWrapper{device, physicalDevice, BufferWrapper::CreateInfo
+                {
+                    .flags = createInfo.flags(),
+                    .size = data.size() * sizeof(T),
+                    .usage = createInfo.usage(),
+                    .queueFamilyIndices = createInfo.queueFamilyIndices()
+                }};
+            memory_ = deviceMemoryAllocator.allocate(device, physicalDevice, buffer.buffer.getMemoryRequirements());
+            memory_.bind(buffer.buffer);
+            std::ranges::copy(data, memory_.data());
+        }
+        Buffer(const Device& device, const BufferWrapper::CreateInfo& createInfo, DeviceMemoryAllocator<T> deviceMemoryAllocator = DeviceMemoryAllocator<T>{})
+            : Buffer{device, device.getPhysicalDevice(), createInfo, deviceMemoryAllocator} {}
+        Buffer(const Device& device, const CreateInfo& createInfo, DeviceMemoryAllocator<T> deviceMemoryAllocator = DeviceMemoryAllocator<T>{})
+            : Buffer{device, device.getPhysicalDevice(), createInfo, deviceMemoryAllocator} {}
+        
+        Buffer(Buffer&&) noexcept = default;
+        Buffer& operator=(Buffer&&) noexcept = default;
+
+        inline operator const vk::raii::Buffer & () const & noexcept { return buffer.buffer; }
+        inline operator vk::Buffer () const & noexcept { return buffer.buffer; }
+        inline const auto* operator->() const & noexcept { return &buffer.buffer; }
+
+    private:
+        BufferWrapper buffer{};
+        DeviceMemory<T> memory_{};
+    };
+    
     class Image
     {
     public:
@@ -115,7 +156,6 @@ namespace vke{
         Image(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, CreateInfo&& createInfo, 
             DeviceMemoryAllocator<> deviceMemoryAllocator = DeviceMemoryAllocator<>{});
         Image(const Device& device, CreateInfo&& createInfo, DeviceMemoryAllocator<> deviceMemoryAllocator = DeviceMemoryAllocator<>{});
-        ~Image() noexcept;
         
         Image(Image&&) noexcept = default;
         Image& operator=(Image&&) noexcept = default;
@@ -147,15 +187,14 @@ namespace vke{
         inline vk::SampleCountFlagBits getSamples() const noexcept { return nativeCreateInfo.samples; }
         inline vk::ImageLayout getInitialLayout() const noexcept { return nativeCreateInfo.initialLayout; }
 
-        void recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice);
-        void recreate(const Device& device);
+        void recreate(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice, DeviceMemoryAllocator<> deviceMemoryAllocator = DeviceMemoryAllocator<>{});
+        void recreate(const Device& device, DeviceMemoryAllocator<> deviceMemoryAllocator = DeviceMemoryAllocator<>{});
 
     private:
         vk::ImageCreateInfo nativeCreateInfo{};
         CreateInfo createInfo;
         vk::raii::Image image{ nullptr };
-        DeviceMemoryAllocator<> allocator_{};
-        DeviceMemoryInfo<void> memory_{};
+        DeviceMemory<void> memory_{};
 
         vk::raii::Image createImage(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physicalDevice);
     };
